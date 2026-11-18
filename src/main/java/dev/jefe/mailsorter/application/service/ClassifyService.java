@@ -35,6 +35,8 @@ public final class ClassifyService implements ClassifyUseCase {
         MailProvider mailbox = store.current().orElseThrow(NotConnectedException::new);
         List<ClassificationReport.Entry> entries = new ArrayList<>();
 
+        System.out.println("Classifying emails...");
+
         for (Email email : mailbox.listUnprocessed(command.limit())) {
             Classification classification = classifyOrUnknown(email);
             Action action = policy.decide(classification);

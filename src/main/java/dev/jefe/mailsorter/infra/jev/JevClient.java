@@ -24,13 +24,6 @@ public final class JevClient {
     public JevResponse evaluate(JsonNode state, JsonNode questions) {
         String body = body(state, questions);
 
-        System.out.println("=== JEV REQUEST ===");
-        System.out.println("URL     : " + config.endpoint());
-        System.out.println("API Key : " + config.apiKey().substring(0, Math.min(8, config.apiKey().length())) + "...");
-        System.out.println("Auth    : Bearer " + config.apiKey().substring(0, Math.min(8, config.apiKey().length())) + "...");
-        System.out.println("Body    : " + body);
-        System.out.println("===================");
-
         HttpRequest request = HttpRequest.newBuilder(config.endpoint())
                 .timeout(config.timeout())
                 .header("Content-Type", "application/json")
