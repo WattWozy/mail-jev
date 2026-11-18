@@ -44,8 +44,7 @@ public final class ClassifyService implements ClassifyUseCase {
                 perform(mailbox, email.id(), action);
                 mailbox.markProcessed(email.id());
             }
-            entries.add(new ClassificationReport.Entry(email.id(), classification, action));
-        }
+            entries.add(new ClassificationReport.Entry(email.id(), email.from(), email.subject(), classification, action));        }
         return new ClassificationReport(List.copyOf(entries), command.dryRun());
     }
 

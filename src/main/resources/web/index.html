@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Mail Sorter</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 980px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+        fieldset { margin-bottom: 1rem; }
+        label { display: inline-block; margin: .25rem .75rem .25rem 0; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { border-bottom: 1px solid #ddd; padding: .4rem; text-align: left; font-size: .9rem; }
+        .badge { padding: .1rem .55rem; border-radius: .7rem; font-size: .8rem; color: #fff; white-space: nowrap; }
+        .ARCHIVE { background: #2a8; } .MOVE_TO_TRASH { background: #d54; }
+        .KEEP { background: #678; } .FLAG_FOR_REVIEW { background: #e90; }
+        .err { color: #c22; } #summary span { margin-right: 1rem; }
+    </style>
+</head>
+<body>
+<h1>Mail Sorter</h1>
+
+<fieldset>
+    <legend>1. Connect</legend>
+    <label>Host <input id="host" value="127.0.0.1"></label>
+    <label>Port <input id="port" type="number" value="3143" size="5"></label>
+    <label>User <input id="user" value="me@example.com"></label>
+    <label>Password <input id="pass" type="password" value="secret"></label>
+    <label><input id="ssl" type="checkbox"> SSL</label>
+    <button id="connect">Connect</button>
+</fieldset>
+
+<fieldset>
+    <legend>2. Classify</legend>
+    <label>Batch size <input id="limit" type="number" value="50" size="4"></label>
+    <button id="preview" disabled>Preview (changes nothing)</button>
+    <button id="apply" disabled>Apply to mailbox</button>
+</fieldset>
+
+<p id="msg"></p>
+<div id="summary"></div>
+<table>
+    <thead><tr><th>From</th><th>Subject</th><th>Category</th><th>Conf.</th><th>Action</th><th>Reason</th></tr></thead>
+    <tbody id="rows"></tbody>
+</table>
+
+<script>
+    const $ = id => document.getElementById(id);
+
+    async function api(path, body) {
+        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+    }
+
+    function show(text, isError) { $('msg').textContent = text; $('msg').className = isError ? 'err' : ''; }
+
+    function cell(row, text) { const td = document.createElement('td'); td.textContent = text; row.appendChild(td); return td; }
+
+    function render(report) {
+        $('summary').replaceChildren(...Object.entries(report.counts).map(([action, n]) => {
+            const s = document.createElement('span'); s.textContent = action + ': ' + n; return s;
+        }));
+        $('rows').replaceChildren(...report.entries.map(e => {
+            const tr = document.createElement('tr');
+            cell(tr, e.from); cell(tr, e.subject); cell(tr, e.category); cell(tr, Math.round(e.confidence * 100) + '%');
+            const badge = document.createElement('span'); badge.className = 'badge ' + e.action; badge.textContent = e.action;
+            cell(tr, '').appendChild(badge);
+            cell(tr, e.reason);
+            return tr;
+        }));
+    }
+
+    $('connect').onclick = async () => {
+        try {
+            await api('/api/connect', {
+                providerType: 'imap', host: $('host').value, port: +$('port').value,
+                username: $('user').value, secret: $('pass').value, options: { ssl: String($('ssl').checked) }
+            });
+            show('Connected.'); $('preview').disabled = false;
+        } catch (e) { show(e.message, true); }
+    };
+
+    async function run(apply) {
+        try {
+            const report = await api('/api/classify', { limit: +$('limit').value, apply });
+            render(report);
+            show(apply ? 'Applied. Run a new preview to see what is left.' : 'Preview only: nothing was changed in the mailbox.');
+            $('apply').disabled = apply || report.entries.length === 0; // apply only after a fresh preview
+        } catch (e) { show(e.message, true); }
+    }
+
+    $('preview').onclick = () => run(false);
+    $('apply').onclick = () => { if (confirm('Move and archive mail as shown?')) run(true); };
+</script>
+</body>
+</html>

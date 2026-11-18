@@ -10,6 +10,7 @@ import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
 import dev.jefe.mailsorter.application.service.ClassifyService;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
+import dev.jefe.mailsorter.domain.Email;
 import dev.jefe.mailsorter.domain.PolicyEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -185,5 +186,16 @@ class ClassifyUseCaseTest {
         var second = classify.execute(ClassifyCommand.apply(1));
 
         assertThat(second.entries()).extracting(ClassificationReport.Entry::emailId).containsExactly("2");
+    }
+
+    @Test
+    void reportEntriesCarryTheSenderAndSubject() {
+        mailbox.withEmails(new Email("1", "news@shop.com", "Weekly deals", "snippet", Map.of()));
+        classifier.answer("1", Category.NEWSLETTER, 0.97);
+
+        var entry = classify.execute(ClassifyCommand.preview(10)).entries().get(0);
+
+        assertThat(entry.from()).isEqualTo("news@shop.com");
+        assertThat(entry.subject()).isEqualTo("Weekly deals");
     }
 }
