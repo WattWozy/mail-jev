@@ -76,7 +76,7 @@ public final class ClassifyService implements ClassifyUseCase {
         for (EvaluatedEmail item : evaluated) {
             Email email = item.email();
 
-            audit.record(email.id(), item.classification(), item.action(), command.dryRun());
+            audit.record(email.id(), item.classification(), item.action(), command.dryRun()); //todo: performance
             if (!command.dryRun()) {
                 perform(mailbox, email.id(), item.action());
                 mailbox.markProcessed(email.id());

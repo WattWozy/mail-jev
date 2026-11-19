@@ -43,9 +43,7 @@ public final class DevMain {
         );
         web.start();
 
-        System.out.println("Dev mode → GreenMail IMAP + Real JEV");
         System.out.println("UI:    http://127.0.0.1:8080");
-        System.out.println("IMAP:  127.0.0.1:3143  user me@example.com  password secret  (no SSL)");
     }
 
     private static void seed(GreenMail greenMail, GreenMailUser user) throws Exception {
