@@ -19,13 +19,14 @@ public final class JevClassifier implements Classifier {
 
     private static final Map<Category, String> CRITERIA = new LinkedHashMap<>();
     static {
-        CRITERIA.put(Category.NEWSLETTER, "Recurring newsletters and mailing lists the user subscribed to");
-        CRITERIA.put(Category.PROMOTION, "Marketing offers, discounts and advertising");
+        CRITERIA.put(Category.NEWSLETTER, "Recurring newsletters, digests, job alerts, and mailing lists the user subscribed to");
+        CRITERIA.put(Category.PROMOTION, "Marketing offers, discounts, surveys, and promotional outreach");
         CRITERIA.put(Category.SOCIAL, "Notifications from social networks");
         CRITERIA.put(Category.INVOICE, "Invoices, receipts, payment and order confirmations");
         CRITERIA.put(Category.PERSONAL, "Messages written by a real person directly to the user");
         CRITERIA.put(Category.SPAM, "Unsolicited junk mail or phishing");
-        CRITERIA.put(Category.UNKNOWN, "Does not clearly fit any other category");
+        CRITERIA.put(Category.SHIPMENT, "Shipping updates, delivery tracking, security alerts, and automated account notifications");
+        CRITERIA.put(Category.UNKNOWN, "Only when none of the other categories apply");
     }
 
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
@@ -52,6 +53,8 @@ public final class JevClassifier implements Classifier {
         state.put("from", email.from());
         state.put("subject", email.subject());
         state.put("snippet", truncate(email.snippet()));
+        state.put("has_list_unsubscribe", email.header("List-Unsubscribe").isPresent());
+        state.put("is_noreply", email.from() != null && email.from().toLowerCase(Locale.ROOT).contains("no-reply") || email.from().toLowerCase(Locale.ROOT).contains("noreply"));
         return state;
     }
 

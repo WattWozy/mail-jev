@@ -6,6 +6,7 @@ import java.util.List;
 /** Driven port. Adapters: IMAP, Gmail API, Microsoft Graph. */
 public interface MailProvider {
     List<Email> listUnprocessed(int limit);
+    String accountId();
     void markProcessed(String emailId);
     void archive(String emailId);
     void moveToTrash(String emailId);

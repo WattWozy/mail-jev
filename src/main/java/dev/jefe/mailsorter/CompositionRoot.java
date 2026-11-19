@@ -33,7 +33,7 @@ public final class CompositionRoot {
         var jev = new JevClassifier(
                 new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))), 500);
         // order matters: the invoice signal must come before List-Unsubscribe
-        Classifier classifier = new PreFilteringClassifier(jev, List.of(new InvoiceSignalRule(), new ListUnsubscribeRule()));
+        Classifier classifier = new PreFilteringClassifier(jev, List.of(new InvoiceSignalRule()));
 
         var policy = new PolicyEngine(Map.of(
                 Category.NEWSLETTER, Action.ARCHIVE,

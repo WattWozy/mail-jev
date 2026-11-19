@@ -20,13 +20,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-
-import static dev.jefe.mailsorter.domain.WellKnownEmailProviders.gmx;
 
 public final class WebServer implements AutoCloseable {
 

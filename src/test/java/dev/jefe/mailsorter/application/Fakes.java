@@ -22,7 +22,7 @@ final class Fakes {
         final Map<String, List<String>> labels = new HashMap<>();
 
         FakeMailProvider withEmails(Email... emails) { inbox.addAll(List.of(emails)); return this; }
-
+        @Override public String accountId(){ return "you@fakemail.com";};
         @Override public List<Email> listUnprocessed(int limit) {
             return inbox.stream().filter(e -> !processed.contains(e.id())).limit(limit).toList();
         }

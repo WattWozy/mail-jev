@@ -23,6 +23,9 @@ public final class ImapMailProviderFactory implements MailProviderFactory {
         if (ssl) {
             props.put("mail." + protocol + ".ssl.enable", "true");
         }
+        props.put("mail.imap.partialfetch", "true");
+        props.put("mail.imap.fetchsize", "2048");
+        props.put("mail.imap.peek", "true");
         // allow callers to inject extra properties
         config.options().forEach((k, v) -> {
             if (k.startsWith("mail.")) props.put(k, v);
@@ -31,7 +34,7 @@ public final class ImapMailProviderFactory implements MailProviderFactory {
         try {
             Store store = Session.getInstance(props).getStore(protocol);
             store.connect(config.host(), config.port(), config.username(), config.secret());
-            return new ImapMailProvider(store);
+            return new ImapMailProvider(store, config.host(), config.username());
         } catch (MessagingException e) {
             throw new ConnectionFailedException(
                     "Could not connect to " + config.host() + ":" + config.port() + " – " + e.getMessage(), e);

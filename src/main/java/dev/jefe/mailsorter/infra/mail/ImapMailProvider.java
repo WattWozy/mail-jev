@@ -4,48 +4,104 @@ import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.domain.Email;
 import jakarta.mail.*;
+import jakarta.mail.internet.ContentType;
 import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.search.FlagTerm;
-import jakarta.mail.search.HeaderTerm;
-import jakarta.mail.search.SearchTerm;
+import jakarta.mail.internet.ParseException;
+import jakarta.mail.search.*;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+/**
+ * IMAP-backed mail provider.
+ *
+ * Performance notes: everything {@link #toEmail} reads (headers, body structure) is prefetched in ONE
+ * batched FETCH in {@link #listUnprocessed}; the snippet reads only a few hundred bytes of the first
+ * text/plain part. For that to be cheap, the Session should set
+ * mail.imap.partialfetch=true, mail.imap.fetchsize=2048 and mail.imap.peek=true.
+ */
 public final class ImapMailProvider implements MailProvider {
 
     static final String PROCESSED_FLAG = "mail-sorter-processed";
     private static final String INBOX = "INBOX";
     private static final String FALLBACK_PREFIX = "fallback:";
     private static final int SNIPPET_CHARS = 200;
+    private static final int[] LOOKBACK_DAYS = {30, 90, 365};
+
+    /** Headers exposed to the classifier. All of them are prefetched in a single batch. */
+    private static final String[] HEADER_NAMES = {
+            "From", "To", "Subject", "Date", "Message-ID", "Reply-To",
+            "List-Unsubscribe", "List-Id", "Precedence", "Auto-Submitted"
+    };
 
     private final Store store;
     private final String archiveFolder;
     private final String trashFolder;
+    private final String host;
+    private final String username;
 
-    ImapMailProvider(Store store) { this(store, "Archive", "Trash"); }
+    ImapMailProvider(Store store, String host, String username) {
+        this(store, "Archive", "Trash", host, username);
+    }
 
-    ImapMailProvider(Store store, String archiveFolder, String trashFolder) {
+    ImapMailProvider(Store store, String archiveFolder, String trashFolder, String host, String username) {
         this.store = store;
         this.archiveFolder = archiveFolder;
         this.trashFolder = trashFolder;
+        this.host = host;
+        this.username = username;
     }
 
     @Override
     public List<Email> listUnprocessed(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
         try {
             Folder inbox = store.getFolder(INBOX);
             inbox.open(Folder.READ_ONLY);
             try {
-                Message[] unprocessed = inbox.search(new FlagTerm(new Flags(PROCESSED_FLAG), false));
-                List<Email> emails = new ArrayList<>();
-                for (Message message : unprocessed) {
-                    if (emails.size() == limit) break;
+                SearchTerm notProcessed = new FlagTerm(new Flags(PROCESSED_FLAG), false);
+
+                long t0 = System.nanoTime();
+                Message[] matches = searchWithProgressiveWindow(inbox, notProcessed, limit);
+                long t1 = System.nanoTime();
+                if (matches.length == 0) {
+                    return List.of();
+                }
+
+                // Newest first.
+                int count = Math.min(limit, matches.length);
+                Message[] latestSlice = new Message[count];
+                for (int i = 0; i < count; i++) {
+                    latestSlice[i] = matches[matches.length - 1 - i];
+                }
+
+                FetchProfile fp = new FetchProfile();
+                fp.add(FetchProfile.Item.ENVELOPE);
+                fp.add(FetchProfile.Item.FLAGS);
+                fp.add(FetchProfile.Item.CONTENT_INFO); // body structure, so snippet() needs no extra round trip
+                for (String header : HEADER_NAMES) {
+                    fp.add(header);
+                }
+                inbox.fetch(latestSlice, fp);
+                long t2 = System.nanoTime();
+
+                List<Email> emails = new ArrayList<>(count);
+                for (Message message : latestSlice) {
                     emails.add(toEmail(message));
                 }
+                long t3 = System.nanoTime();
+
+                System.out.printf("search=%dms fetch=%dms toEmail=%dms%n",
+                        (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, (t3 - t2) / 1_000_000);
                 return emails;
             } finally {
                 inbox.close(false);
@@ -55,6 +111,7 @@ public final class ImapMailProvider implements MailProvider {
         }
     }
 
+    @Override public String accountId() { return username + "@" + host; }
     @Override public void markProcessed(String id) { onMessage(id, (f, m) -> m.setFlags(new Flags(PROCESSED_FLAG), true)); }
     @Override public void archive(String id) { onMessage(id, (f, m) -> moveTo(f, m, archiveFolder)); }
     @Override public void moveToTrash(String id) { onMessage(id, (f, m) -> moveTo(f, m, trashFolder)); }
@@ -121,10 +178,13 @@ public final class ImapMailProvider implements MailProvider {
     }
 
     private static Email toEmail(Message message) throws MessagingException, IOException {
+        // getHeader(name, null) is served from the prefetched headers; getAllHeaders() would hit the server again.
         Map<String, String> headers = new LinkedHashMap<>();
-        for (Enumeration<Header> e = message.getAllHeaders(); e.hasMoreElements(); ) {
-            Header h = e.nextElement();
-            headers.putIfAbsent(h.getName(), h.getValue());
+        for (String name : HEADER_NAMES) {
+            String value = Arrays.toString(message.getHeader(name));
+            if (value != null) {
+                headers.put(name, value);
+            }
         }
         String messageId = messageIdOf(message);
         String id = messageId != null ? messageId : fallbackId(message);
@@ -146,10 +206,13 @@ public final class ImapMailProvider implements MailProvider {
         return message.getSubject() == null ? "" : message.getSubject();
     }
 
+    /** First text/plain content, skipping attachments; reads only a short prefix of the part. */
     private static String snippet(Part part) throws MessagingException, IOException {
+        if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
+            return "";
+        }
         if (part.isMimeType("text/plain")) {
-            String text = String.valueOf(part.getContent()).strip().replaceAll("\\s+", " ");
-            return text.length() <= SNIPPET_CHARS ? text : text.substring(0, SNIPPET_CHARS);
+            return readPrefix(part);
         }
         if (part.isMimeType("multipart/*")) {
             Multipart multipart = (Multipart) part.getContent();
@@ -159,6 +222,40 @@ public final class ImapMailProvider implements MailProvider {
             }
         }
         return "";
+    }
+
+    /** Reads at most SNIPPET_CHARS * 4 raw bytes (decoded from base64/quoted-printable by the stream). */
+    private static String readPrefix(Part part) throws MessagingException, IOException {
+        Charset charset = StandardCharsets.UTF_8;
+        try {
+            String declared = new ContentType(part.getContentType()).getParameter("charset");
+            if (declared != null) charset = Charset.forName(declared);
+        } catch (ParseException | IllegalArgumentException ignored) {
+            // unknown or malformed charset: fall back to UTF-8
+        }
+
+        try (InputStream in = part.getInputStream()) {
+            byte[] buffer = in.readNBytes(SNIPPET_CHARS * 4);
+            String text = new String(buffer, charset).strip().replaceAll("\\s+", " ");
+            return text.length() <= SNIPPET_CHARS ? text : text.substring(0, SNIPPET_CHARS);
+        }
+    }
+
+    private static Message[] searchWithProgressiveWindow(Folder inbox, SearchTerm baseTerm, int limit)
+            throws MessagingException {
+        Instant now = Instant.now();
+
+        for (int days : LOOKBACK_DAYS) {
+            Date since = Date.from(now.minus(days, ChronoUnit.DAYS));
+            SearchTerm term = new AndTerm(baseTerm, new ReceivedDateTerm(ComparisonTerm.GE, since));
+            Message[] result = inbox.search(term);
+            if (result.length >= limit) {
+                return result;
+            }
+        }
+
+        // Fewer than `limit` within the last year: search the whole INBOX.
+        return inbox.search(baseTerm);
     }
 
     private static String fallbackId(Message message) throws MessagingException {
