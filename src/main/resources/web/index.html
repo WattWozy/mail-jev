@@ -2,17 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="dark">
     <title>Mail Sorter</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 980px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-        fieldset { margin-bottom: 1rem; }
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 980px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            background: #181a1d;
+            color: #d4d7dd;
+        }
+        fieldset {
+            margin-bottom: 1rem;
+            border: 1px solid #30343b;
+            border-radius: 6px;
+            background: #1e2126;
+        }
+        legend { color: #9ea4b0; }
         label { display: inline-block; margin: .25rem .75rem .25rem 0; }
+        input, select, button {
+            background: #252930;
+            color: #e2e5eb;
+            border: 1px solid #3a3f48;
+            border-radius: 4px;
+            padding: .3rem .5rem;
+        }
+        button { cursor: pointer; }
+        button:hover { background: #2f343d; border-color: #4c5360; }
         table { border-collapse: collapse; width: 100%; }
-        td, th { border-bottom: 1px solid #ddd; padding: .4rem; text-align: left; font-size: .9rem; }
-        .badge { padding: .1rem .55rem; border-radius: .7rem; font-size: .8rem; color: #fff; white-space: nowrap; }
-        .ARCHIVE { background: #2a8; } .MOVE_TO_TRASH { background: #d54; }
-        .KEEP { background: #678; } .FLAG_FOR_REVIEW { background: #e90; }
-        .err { color: #c22; } #summary span { margin-right: 1rem; }
+        td, th { border-bottom: 1px solid #2b2f36; padding: .4rem; text-align: left; font-size: .9rem; }
+        th { color: #9ea4b0; }
+        tr:hover td { background: #1e2126; }
+        .badge { padding: .1rem .55rem; border-radius: .7rem; font-size: .8rem; color: #f4f6f8; white-space: nowrap; }
+        .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
+        .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
+        .err { color: #f26d6d; } #summary span { margin-right: 1rem; }
     </style>
 </head>
 <body>

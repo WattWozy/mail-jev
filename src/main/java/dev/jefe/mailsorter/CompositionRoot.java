@@ -41,8 +41,14 @@ public final class CompositionRoot {
                 Category.PROMOTION, Action.MOVE_TO_TRASH,
                 Category.SPAM, Action.MOVE_TO_TRASH), 0.9);
 
-        return new WebServer(config.webHost(), config.webPort(),
+        return new WebServer(
+                config.webHost(),
+                config.webPort(),
                 new ConnectService(new ImapMailProviderFactory(), store),
-                new ClassifyService(store, classifier, policy, audit));
+                new ClassifyService(
+                        store,
+                        classifier,
+                        policy,
+                        audit));
     }
 }

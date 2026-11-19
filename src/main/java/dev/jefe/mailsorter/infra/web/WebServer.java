@@ -14,6 +14,7 @@ import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
 import dev.jefe.mailsorter.application.port.in.ConnectUseCase;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,6 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+
+import static dev.jefe.mailsorter.domain.WellKnownEmailProviders.gmx;
 
 public final class WebServer implements AutoCloseable {
 
@@ -50,13 +53,7 @@ public final class WebServer implements AutoCloseable {
     private Response handleConnect(JsonNode body) {
         Map<String, String> options = new HashMap<>();
         body.path("options").fields().forEachRemaining(e -> options.put(e.getKey(), e.getValue().asText()));
-        var config = new MailboxConfig(
-                body.path("providerType").asText("imap"),
-                body.path("host").asText(""),
-                body.path("port").asInt(993),
-                body.path("username").asText(""),
-                body.path("secret").asText(""),
-                options);
+        var config = WellKnownEmailProviders.gmx("niklas2@gmx.es", "asdf");
         connect.execute(config);
         return new Response(200, Map.of("connected", true));
     }

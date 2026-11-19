@@ -1,6 +1,8 @@
 package dev.jefe.mailsorter.domain;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /** Provider-agnostic connection settings pasted in by the customer. */
 public record MailboxConfig(
@@ -26,5 +28,69 @@ public record MailboxConfig(
     @Override
     public String toString() { // never leak the secret into logs
         return "MailboxConfig[" + providerType + "://" + username + "@" + host + ":" + port + "]";
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private String providerType;
+        private String host;
+        private int port = -1;                 // force explicit setting
+        private String username;
+        private String secret;
+        private final Map<String, String> options = new HashMap<>();
+
+        private Builder() {}
+
+        public Builder providerType(String providerType) {
+            this.providerType = providerType;
+            return this;
+        }
+
+        public Builder host(String host) {
+            this.host = host;
+            return this;
+        }
+
+        public Builder port(int port) {
+            this.port = port;
+            return this;
+        }
+
+        public Builder username(String username) {
+            this.username = username;
+            return this;
+        }
+
+        public Builder secret(String secret) {
+            this.secret = secret;
+            return this;
+        }
+
+        /** Add or overwrite a single option. */
+        public Builder option(String key, String value) {
+            Objects.requireNonNull(key, "option key must not be null");
+            if (value == null) {
+                options.remove(key);
+            } else {
+                options.put(key, value);
+            }
+            return this;
+        }
+
+        /** Replace all options. */
+        public Builder options(Map<String, String> options) {
+            this.options.clear();
+            if (options != null) {
+                this.options.putAll(options);
+            }
+            return this;
+        }
+
+        public MailboxConfig build() {
+            return new MailboxConfig(providerType, host, port, username, secret, options);
+        }
     }
 }
