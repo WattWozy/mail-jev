@@ -37,7 +37,10 @@
         .badge { padding: .1rem .55rem; border-radius: .7rem; font-size: .8rem; color: #f4f6f8; white-space: nowrap; }
         .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
         .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
-        .err { color: #f26d6d; } #summary span { margin-right: 1rem; }
+        .err { color: #f26d6d; }
+        .ok  { color: #4ade80; }          /* green for success */
+        #summary span { margin-right: 1rem; }
+        .custom-only { display: none; }   /* hidden by default */
     </style>
 </head>
 <body>
@@ -45,11 +48,24 @@
 
 <fieldset>
     <legend>1. Connect</legend>
-    <label>Host <input id="host" value="127.0.0.1"></label>
-    <label>Port <input id="port" type="number" value="3143" size="5"></label>
-    <label>User <input id="user" value="me@example.com"></label>
-    <label>Password <input id="pass" type="password" value="secret"></label>
-    <label><input id="ssl" type="checkbox"> SSL</label>
+
+    <label>Provider
+        <select id="provider">
+            <option value="gmail">Gmail</option>
+            <option value="gmx">GMX</option>
+            <option value="outlook">Outlook / Office 365</option>
+            <option value="yahoo">Yahoo</option>
+            <option value="icloud">iCloud</option>
+            <option value="">Custom</option>
+        </select>
+    </label>
+
+    <label class="custom-only">Host <input id="host" value="127.0.0.1"></label>
+    <label class="custom-only">Port <input id="port" type="number" value="3143" size="5"></label>
+    <label>User <input id="user" value=""></label>
+    <label>Password <input id="pass" type="password" value=""></label>
+    <label class="custom-only"><input id="ssl" type="checkbox"> SSL</label>
+
     <button id="connect">Connect</button>
 </fieldset>
 
@@ -70,25 +86,72 @@
 <script>
     const $ = id => document.getElementById(id);
 
+    const providers = {
+        gmx:     { host: 'imap.gmx.com',     port: 993, ssl: true },
+        gmail:   { host: 'imap.gmail.com',   port: 993, ssl: true },
+        outlook: { host: 'outlook.office365.com', port: 993, ssl: true },
+        yahoo:   { host: 'imap.mail.yahoo.com', port: 993, ssl: true },
+        icloud:  { host: 'imap.mail.me.com', port: 993, ssl: true },
+    };
+
+    function updateCustomVisibility() {
+        const isCustom = !$('provider').value;
+        document.querySelectorAll('.custom-only').forEach(el => {
+            el.style.display = isCustom ? 'inline-block' : 'none';
+        });
+    }
+
+    $('provider').onchange = () => {
+        const p = providers[$('provider').value];
+        if (p) {
+            $('host').value = p.host;
+            $('port').value = p.port;
+            $('ssl').checked = p.ssl;
+        }
+        updateCustomVisibility();
+    };
+
+    // initial state
+    updateCustomVisibility();
+
     async function api(path, body) {
-        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
         return data;
     }
 
-    function show(text, isError) { $('msg').textContent = text; $('msg').className = isError ? 'err' : ''; }
+    function show(text, isError = false) {
+        $('msg').textContent = text;
+        $('msg').className = isError ? 'err' : (text === 'Connected.' ? 'ok' : '');
+    }
 
-    function cell(row, text) { const td = document.createElement('td'); td.textContent = text; row.appendChild(td); return td; }
+    function cell(row, text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        row.appendChild(td);
+        return td;
+    }
 
     function render(report) {
         $('summary').replaceChildren(...Object.entries(report.counts).map(([action, n]) => {
-            const s = document.createElement('span'); s.textContent = action + ': ' + n; return s;
+            const s = document.createElement('span');
+            s.textContent = action + ': ' + n;
+            return s;
         }));
         $('rows').replaceChildren(...report.entries.map(e => {
             const tr = document.createElement('tr');
-            cell(tr, e.from); cell(tr, e.subject); cell(tr, e.category); cell(tr, Math.round(e.confidence * 100) + '%');
-            const badge = document.createElement('span'); badge.className = 'badge ' + e.action; badge.textContent = e.action;
+            cell(tr, e.from);
+            cell(tr, e.subject);
+            cell(tr, e.category);
+            cell(tr, Math.round(e.confidence * 100) + '%');
+            const badge = document.createElement('span');
+            badge.className = 'badge ' + e.action;
+            badge.textContent = e.action;
             cell(tr, '').appendChild(badge);
             cell(tr, e.reason);
             return tr;
@@ -97,25 +160,48 @@
 
     $('connect').onclick = async () => {
         try {
-            await api('/api/connect', {
-                providerType: 'imap', host: $('host').value, port: +$('port').value,
-                username: $('user').value, secret: $('pass').value, options: { ssl: String($('ssl').checked) }
-            });
-            show('Connected.'); $('preview').disabled = false;
-        } catch (e) { show(e.message, true); }
+            const provider = $('provider').value;
+            const body = {
+                provider: provider,
+                username: $('user').value,
+                secret: $('pass').value
+            };
+
+            // only send host/port/ssl when Custom is selected
+            if (!provider) {
+                body.host = $('host').value;
+                body.port = +$('port').value;
+                body.ssl  = String($('ssl').checked);
+            }
+
+            await api('/api/connect', body);
+            show('Connected.');
+            $('preview').disabled = false;
+        } catch (e) {
+            show(e.message, true);
+        }
     };
 
     async function run(apply) {
         try {
-            const report = await api('/api/classify', { limit: +$('limit').value, apply });
+            const report = await api('/api/classify', {
+                limit: +$('limit').value,
+                apply
+            });
             render(report);
-            show(apply ? 'Applied. Run a new preview to see what is left.' : 'Preview only: nothing was changed in the mailbox.');
-            $('apply').disabled = apply || report.entries.length === 0; // apply only after a fresh preview
-        } catch (e) { show(e.message, true); }
+            show(apply
+                ? 'Applied. Run a new preview to see what is left.'
+                : 'Preview only: nothing was changed in the mailbox.');
+            $('apply').disabled = apply || report.entries.length === 0;
+        } catch (e) {
+            show(e.message, true);
+        }
     }
 
     $('preview').onclick = () => run(false);
-    $('apply').onclick = () => { if (confirm('Move and archive mail as shown?')) run(true); };
+    $('apply').onclick = () => {
+        if (confirm('Move and archive mail as shown?')) run(true);
+    };
 </script>
 </body>
 </html>

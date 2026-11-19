@@ -51,9 +51,27 @@ public final class WebServer implements AutoCloseable {
     @Override public void close() { server.stop(0); }
 
     private Response handleConnect(JsonNode body) {
-        Map<String, String> options = new HashMap<>();
-        body.path("options").fields().forEachRemaining(e -> options.put(e.getKey(), e.getValue().asText()));
-        var config = WellKnownEmailProviders.gmx("niklas2@gmx.es", "asdf");
+        String provider = body.path("provider").asText("").toLowerCase();
+        String email    = body.path("username").asText().trim();
+        String secret   = body.path("secret").asText();
+
+        MailboxConfig config = switch (provider) {
+            case "gmx"     -> WellKnownEmailProviders.gmx(email, secret);
+            case "gmail"   -> WellKnownEmailProviders.gmail(email, secret);
+            case "outlook" -> WellKnownEmailProviders.outlook(email, secret);
+            case "yahoo"   -> WellKnownEmailProviders.yahoo(email, secret);
+            case "icloud"  -> WellKnownEmailProviders.icloud(email, secret);
+            default        ->
+                    MailboxConfig.builder()
+                            .providerType("imap")
+                            .host(body.path("host").asText().trim())
+                            .port(body.path("port").asInt(993))
+                            .username(email)
+                            .secret(secret)
+                            .option("ssl", body.path("ssl").asText("true"))
+                            .build();
+        };
+
         connect.execute(config);
         return new Response(200, Map.of("connected", true));
     }
