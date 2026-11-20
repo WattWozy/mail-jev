@@ -1,6 +1,7 @@
 package dev.jefe.mailsorter;
 
 import dev.jefe.mailsorter.application.port.out.Classifier;
+import dev.jefe.mailsorter.application.service.ApplyPlanService;
 import dev.jefe.mailsorter.application.service.ClassifyService;
 import dev.jefe.mailsorter.application.service.ConnectService;
 import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
@@ -15,6 +16,7 @@ import dev.jefe.mailsorter.infra.jev.JevConfig;
 import dev.jefe.mailsorter.infra.mail.ImapMailProviderFactory;
 import dev.jefe.mailsorter.infra.memory.InMemoryAuditLog;
 import dev.jefe.mailsorter.infra.memory.InMemoryConnectionStore;
+import dev.jefe.mailsorter.infra.memory.InMemoryPlanStore;
 import dev.jefe.mailsorter.infra.web.WebServer;
 
 import java.io.IOException;
@@ -28,7 +30,8 @@ public final class CompositionRoot {
 
     public static WebServer build(AppConfig config) throws IOException {
         var store = new InMemoryConnectionStore();
-        var audit = new InMemoryAuditLog();
+        var auditLog = new InMemoryAuditLog();
+        var planStore = new InMemoryPlanStore();
 
         var jev = new JevClassifier(
                 new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))), 500);
@@ -45,10 +48,8 @@ public final class CompositionRoot {
                 config.webHost(),
                 config.webPort(),
                 new ConnectService(new ImapMailProviderFactory(), store),
-                new ClassifyService(
-                        store,
-                        classifier,
-                        policy,
-                        audit));
+                new ClassifyService(store, classifier, policy, planStore),
+                new ApplyPlanService(store, planStore, auditLog)   // ← add this
+        );
     }
 }

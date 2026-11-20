@@ -3,10 +3,7 @@ package dev.jefe.mailsorter.infra.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
-import dev.jefe.mailsorter.application.port.in.ClassificationReport;
-import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
-import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
-import dev.jefe.mailsorter.application.port.in.ConnectUseCase;
+import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.Classification;
@@ -22,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,14 +40,28 @@ class WebServerTest {
             if (connectFailure != null) throw connectFailure;
             connected.add(config);
         };
+
         ClassifyUseCase classify = command -> {
             if (classifyFailure != null) throw classifyFailure;
             commands.add(command);
-            var entry = new ClassificationReport.Entry("<1@t>", "offers@shop.com", "Summer SALE",
-                    new Classification(Category.PROMOTION, 0.95, "jev"), Action.MOVE_TO_TRASH);
-            return new ClassificationReport(List.of(entry), command.dryRun());
+
+            var entry = new Plan.Entry(
+                    "<1@t>",
+                    "offers@shop.com",
+                    "Summer SALE",
+                    new Classification(Category.PROMOTION, 0.95, "jev"),
+                    Action.MOVE_TO_TRASH
+            );
+            return new Plan("test-plan-id", List.of(entry));
         };
-        web = new WebServer("127.0.0.1", 0, connect, classify);
+
+        // simple no-op apply for the web tests (or capture calls if you want)
+        ApplyPlanUseCase apply = command -> {
+            // you can collect the command here if the tests assert on it
+            return new ApplyResult(Map.of(), List.of());
+        };
+
+        web = new WebServer("127.0.0.1", 0, connect, classify, apply);
         web.start();
     }
 
@@ -96,24 +108,18 @@ class WebServerTest {
     }
 
     @Test
-    void classifyDefaultsToPreviewAndReturnsTheReport() throws Exception {
+    void classifyCreatesAPlanAndReturnsIt() throws Exception {
         var response = post("/api/classify", "{\"limit\":5}");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(commands).containsExactly(ClassifyCommand.preview(5));
+        assertThat(commands).containsExactly(new ClassifyCommand(5));
+
         var body = json.readTree(response.body());
-        assertThat(body.get("dryRun").asBoolean()).isTrue();
+        assertThat(body.get("planId").asText()).isEqualTo("test-plan-id");
         assertThat(body.at("/counts/MOVE_TO_TRASH").asInt()).isEqualTo(1);
         assertThat(body.at("/entries/0/subject").asText()).isEqualTo("Summer SALE");
         assertThat(body.at("/entries/0/category").asText()).isEqualTo("PROMOTION");
         assertThat(body.at("/entries/0/action").asText()).isEqualTo("MOVE_TO_TRASH");
-    }
-
-    @Test
-    void classifyOnlyTouchesTheMailboxWhenApplyIsExplicitlyTrue() throws Exception {
-        post("/api/classify", "{\"limit\":5,\"apply\":true}");
-
-        assertThat(commands).containsExactly(ClassifyCommand.apply(5));
     }
 
     @Test

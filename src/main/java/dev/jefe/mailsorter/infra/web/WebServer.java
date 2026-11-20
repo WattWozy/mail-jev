@@ -8,10 +8,8 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
-import dev.jefe.mailsorter.application.port.in.ClassificationReport;
-import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
-import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
-import dev.jefe.mailsorter.application.port.in.ConnectUseCase;
+import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
+import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.MailboxConfig;
 import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
@@ -25,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public final class WebServer implements AutoCloseable {
 
@@ -33,14 +32,20 @@ public final class WebServer implements AutoCloseable {
     private final HttpServer server;
     private final ConnectUseCase connect;
     private final ClassifyUseCase classify;
+    private final ApplyPlanUseCase apply;
     private final ObjectMapper json = new ObjectMapper();
 
-    public WebServer(String host, int port, ConnectUseCase connect, ClassifyUseCase classify) throws IOException {
+    public WebServer(String host, int port,
+                     ConnectUseCase connect,
+                     ClassifyUseCase classify,
+                     ApplyPlanUseCase apply) throws IOException {
         this.connect = connect;
         this.classify = classify;
+        this.apply = apply;
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/api/connect", post(this::handleConnect));
         server.createContext("/api/classify", post(this::handleClassify));
+        server.createContext("/api/apply", post(this::handleApply));
         server.createContext("/", this::serveUi);
     }
 
@@ -74,17 +79,43 @@ public final class WebServer implements AutoCloseable {
         return new Response(200, Map.of("connected", true));
     }
 
+    /** Always produces a plan – never mutates the mailbox. */
     private Response handleClassify(JsonNode body) {
         int limit = body.path("limit").asInt(50);
-        boolean apply = body.path("apply").asBoolean(false); // preview unless explicitly asked
-        var command = apply ? ClassifyCommand.apply(limit) : ClassifyCommand.preview(limit);
-        return new Response(200, toJson(classify.execute(command)));
+        Plan plan = classify.execute(new ClassifyCommand(limit));
+        return new Response(200, toJson(plan));
     }
 
-    private static Map<String, Object> toJson(ClassificationReport report) {
+    /**
+     * Applies a previously created plan.
+     * Body: { "planId": "...", "overrides": { "emailId": "ARCHIVE", ... } }
+     */
+    private Response handleApply(JsonNode body) {
+        String planId = body.path("planId").asText(null);
+        if (planId == null || planId.isBlank()) {
+            return new Response(400, Map.of("error", "planId is required"));
+        }
+
+        Map<String, Action> overrides = Map.of();
+        JsonNode overridesNode = body.path("overrides");
+        if (overridesNode.isObject()) {
+            overrides = overridesNode.properties().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> Action.valueOf(e.getValue().asText())
+                    ));
+        }
+
+        ApplyResult result = apply.execute(new ApplyCommand(planId, overrides));
+        return new Response(200, toJson(result));
+    }
+
+    private static Map<String, Object> toJson(Plan plan) {
         Map<String, Long> counts = new LinkedHashMap<>();
-        for (Action a : Action.values()) counts.put(a.name(), report.countOf(a));
-        List<Map<String, Object>> entries = report.entries().stream().map(e -> {
+        for (Action a : Action.values()) {
+            counts.put(a.name(), plan.countOf(a));
+        }
+        List<Map<String, Object>> entries = plan.entries().stream().map(e -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("emailId", e.emailId());
             m.put("from", e.from());
@@ -95,7 +126,25 @@ public final class WebServer implements AutoCloseable {
             m.put("action", e.action().name());
             return m;
         }).toList();
-        return Map.of("dryRun", report.dryRun(), "counts", counts, "entries", entries);
+        return Map.of(
+                "planId", plan.id(),
+                "counts", counts,
+                "entries", entries
+        );
+    }
+
+    private static Map<String, Object> toJson(ApplyResult result) {
+        Map<String, Long> applied = new LinkedHashMap<>();
+        result.applied().forEach((action, count) -> applied.put(action.name(), count));
+
+        List<Map<String, String>> failures = result.failures().stream()
+                .map(f -> Map.of("emailId", f.emailId(), "message", f.message()))
+                .toList();
+
+        return Map.of(
+                "applied", applied,
+                "failures", failures
+        );
     }
 
     private HttpHandler post(Function<JsonNode, Response> logic) {
@@ -112,6 +161,8 @@ public final class WebServer implements AutoCloseable {
                     response = new Response(400, Map.of("error", String.valueOf(e.getMessage())));
                 } catch (NotConnectedException e) {
                     response = new Response(409, Map.of("error", e.getMessage()));
+                } catch (PlanNotFoundException e) {
+                    response = new Response(404, Map.of("error", e.getMessage()));
                 } catch (ConnectionFailedException e) {
                     AppLog.error(WebServer.class, e.getMessage(), e);
                     response = new Response(502, Map.of("error", e.getMessage()));

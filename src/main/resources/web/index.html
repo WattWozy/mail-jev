@@ -43,7 +43,6 @@
         #summary span { margin-right: 1rem; }
         .custom-only { display: none; }
 
-        /* Spinner */
         #spinner {
             display: none;
             align-items: center;
@@ -91,10 +90,10 @@
 </fieldset>
 
 <fieldset>
-    <legend>2. Classify</legend>
+    <legend>2. Plan &amp; Apply</legend>
     <label>Batch size <input id="limit" type="number" value="25" size="4"></label>
-    <button id="preview" disabled>Preview (changes nothing)</button>
-    <button id="apply" disabled>Apply to mailbox</button>
+    <button id="preview" disabled>Preview (creates a plan)</button>
+    <button id="apply" disabled>Apply plan to mailbox</button>
 </fieldset>
 
 <div id="spinner">
@@ -111,6 +110,9 @@
 
 <script>
     const $ = id => document.getElementById(id);
+
+    // holds the plan currently shown in the table
+    let currentPlanId = null;
 
     const providers = {
         gmx:     { host: 'imap.gmx.com',     port: 993, ssl: true },
@@ -136,10 +138,8 @@
         }
         updateCustomVisibility();
     };
-
     updateCustomVisibility();
 
-    // ---- loading / spinner helpers ----
     function setLoading(on, text = 'Working…') {
         $('spinner').classList.toggle('visible', on);
         $('spinner-text').textContent = text;
@@ -148,14 +148,16 @@
         $('apply').disabled = on || !$('apply').dataset.enabled;
     }
 
-    // keep track of which buttons are actually allowed
     function enablePreview(ok) {
         $('preview').dataset.enabled = ok ? '1' : '';
         if (!ok) $('preview').disabled = true;
+        else if (!$('spinner').classList.contains('visible')) $('preview').disabled = false;
     }
+
     function enableApply(ok) {
         $('apply').dataset.enabled = ok ? '1' : '';
         if (!ok) $('apply').disabled = true;
+        else if (!$('spinner').classList.contains('visible')) $('apply').disabled = false;
     }
 
     async function api(path, body) {
@@ -171,7 +173,7 @@
 
     function show(text, isError = false) {
         $('msg').textContent = text;
-        $('msg').className = isError ? 'err' : (text === 'Connected.' ? 'ok' : '');
+        $('msg').className = isError ? 'err' : (text.startsWith('Connected') || text.startsWith('Applied') ? 'ok' : '');
     }
 
     function cell(row, text) {
@@ -181,13 +183,16 @@
         return td;
     }
 
-    function render(report) {
-        $('summary').replaceChildren(...Object.entries(report.counts).map(([action, n]) => {
+    function renderPlan(plan) {
+        currentPlanId = plan.planId;
+
+        $('summary').replaceChildren(...Object.entries(plan.counts).map(([action, n]) => {
             const s = document.createElement('span');
             s.textContent = action + ': ' + n;
             return s;
         }));
-        $('rows').replaceChildren(...report.entries.map(e => {
+
+        $('rows').replaceChildren(...plan.entries.map(e => {
             const tr = document.createElement('tr');
             cell(tr, e.from);
             cell(tr, e.subject);
@@ -202,9 +207,17 @@
         }));
     }
 
+    function clearPlan() {
+        currentPlanId = null;
+        $('summary').replaceChildren();
+        $('rows').replaceChildren();
+        enableApply(false);
+    }
+
     $('connect').onclick = async () => {
         setLoading(true, 'Connecting…');
         show('');
+        clearPlan();
         try {
             const provider = $('provider').value;
             const body = {
@@ -212,49 +225,68 @@
                 username: $('user').value,
                 secret: $('pass').value
             };
-
             if (!provider) {
                 body.host = $('host').value;
                 body.port = +$('port').value;
                 body.ssl  = String($('ssl').checked);
             }
-
             await api('/api/connect', body);
             show('Connected.');
             enablePreview(true);
-            enableApply(false);
         } catch (e) {
             show(e.message, true);
             enablePreview(false);
-            enableApply(false);
         } finally {
             setLoading(false);
         }
     };
 
-    async function run(apply) {
-        setLoading(true, apply ? 'Applying changes…' : 'Classifying…');
+    $('preview').onclick = async () => {
+        setLoading(true, 'Classifying…');
         show('');
         try {
-            const report = await api('/api/classify', {
-                limit: +$('limit').value,
-                apply
+            const plan = await api('/api/classify', {
+                limit: +$('limit').value
             });
-            render(report);
-            show(apply
-                ? 'Applied. Run a new preview to see what is left.'
-                : 'Preview only: nothing was changed in the mailbox.');
-            enableApply(!apply && report.entries.length > 0);
+            renderPlan(plan);
+            show(plan.entries.length
+                ? 'Plan ready. Review and click Apply when you are happy with it.'
+                : 'Nothing to do – inbox is clean (or limit is zero).');
+            enableApply(plan.entries.length > 0);
+        } catch (e) {
+            show(e.message, true);
+            clearPlan();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    $('apply').onclick = async () => {
+        if (!currentPlanId) return;
+        if (!confirm('Apply the current plan to the mailbox?')) return;
+
+        setLoading(true, 'Applying plan…');
+        show('');
+        try {
+            const result = await api('/api/apply', {
+                planId: currentPlanId
+                // overrides can be added later: { "emailId": "KEEP", ... }
+            });
+
+            const applied = Object.entries(result.applied || {})
+                .map(([a, n]) => a + ': ' + n)
+                .join(', ') || 'none';
+            const failCount = (result.failures || []).length;
+
+            show(failCount
+                ? `Applied (${applied}). ${failCount} failure(s) – they can be retried next run.`
+                : `Applied (${applied}).`);
+            clearPlan();
         } catch (e) {
             show(e.message, true);
         } finally {
             setLoading(false);
         }
-    }
-
-    $('preview').onclick = () => run(false);
-    $('apply').onclick = () => {
-        if (confirm('Move and archive mail as shown?')) run(true);
     };
 </script>
 </body>
