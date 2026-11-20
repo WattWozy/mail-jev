@@ -8,6 +8,7 @@ import jakarta.mail.internet.ContentType;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.ParseException;
 import jakarta.mail.search.*;
+import org.eclipse.angus.mail.imap.IMAPFolder;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,7 +33,7 @@ public final class ImapMailProvider implements MailProvider {
     static final String PROCESSED_FLAG = "mail-sorter-processed";
     private static final String INBOX = "INBOX";
     private static final String FALLBACK_PREFIX = "fallback:";
-    private static final int SNIPPET_CHARS = 200;
+    private static final int SNIPPET_CHARS = 800;
     private static final int[] LOOKBACK_DAYS = {30, 90, 365};
 
     /** Headers exposed to the classifier. All of them are prefetched in a single batch. */
@@ -77,22 +78,29 @@ public final class ImapMailProvider implements MailProvider {
                     return List.of();
                 }
 
-                // Newest first.
+                // Newest first
                 int count = Math.min(limit, matches.length);
                 Message[] latestSlice = new Message[count];
                 for (int i = 0; i < count; i++) {
                     latestSlice[i] = matches[matches.length - 1 - i];
                 }
 
-                FetchProfile fp = new FetchProfile();
-                fp.add(FetchProfile.Item.ENVELOPE);
-                fp.add(FetchProfile.Item.FLAGS);
-                fp.add(FetchProfile.Item.CONTENT_INFO); // body structure, so snippet() needs no extra round trip
+                // 1) Structure + headers
+                FetchProfile structure = new FetchProfile();
+                structure.add(FetchProfile.Item.ENVELOPE);
+                structure.add(FetchProfile.Item.FLAGS);
+                structure.add(FetchProfile.Item.CONTENT_INFO);
                 for (String header : HEADER_NAMES) {
-                    fp.add(header);
+                    structure.add(header);
                 }
-                inbox.fetch(latestSlice, fp);
+                inbox.fetch(latestSlice, structure);
                 long t2 = System.nanoTime();
+
+                // 2) Force full content into cache (batch) so snippet() becomes local
+                FetchProfile content = new FetchProfile();
+                content.add(IMAPFolder.FetchProfileItem.MESSAGE);
+                inbox.fetch(latestSlice, content);
+                long t2b = System.nanoTime();
 
                 List<Email> emails = new ArrayList<>(count);
                 for (Message message : latestSlice) {
@@ -100,8 +108,11 @@ public final class ImapMailProvider implements MailProvider {
                 }
                 long t3 = System.nanoTime();
 
-                System.out.printf("search=%dms fetch=%dms toEmail=%dms%n",
-                        (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, (t3 - t2) / 1_000_000);
+                System.out.printf("search=%dms structure=%dms content=%dms toEmail=%dms%n",
+                        (t1 - t0) / 1_000_000,
+                        (t2 - t1) / 1_000_000,
+                        (t2b - t2) / 1_000_000,
+                        (t3 - t2b) / 1_000_000);
                 return emails;
             } finally {
                 inbox.close(false);
@@ -211,13 +222,31 @@ public final class ImapMailProvider implements MailProvider {
         if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
             return "";
         }
+
         if (part.isMimeType("text/plain")) {
             return readPrefix(part);
         }
+
+        if (part.isMimeType("text/html")) {
+            // Only as fallback – still limited
+            String html = readPrefix(part);
+            // very cheap strip (or keep your existing cleaner if you prefer)
+            return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").strip();
+        }
+
         if (part.isMimeType("multipart/*")) {
-            Multipart multipart = (Multipart) part.getContent();
-            for (int i = 0; i < multipart.getCount(); i++) {
-                String s = snippet(multipart.getBodyPart(i));
+            Multipart mp = (Multipart) part.getContent();
+            // Prefer text/plain first
+            for (int i = 0; i < mp.getCount(); i++) {
+                BodyPart bp = mp.getBodyPart(i);
+                if (bp.isMimeType("text/plain") && !Part.ATTACHMENT.equalsIgnoreCase(bp.getDisposition())) {
+                    String s = readPrefix(bp);
+                    if (!s.isEmpty()) return s;
+                }
+            }
+            // then anything else
+            for (int i = 0; i < mp.getCount(); i++) {
+                String s = snippet(mp.getBodyPart(i));
                 if (!s.isEmpty()) return s;
             }
         }

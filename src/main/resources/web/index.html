@@ -29,7 +29,8 @@
             padding: .3rem .5rem;
         }
         button { cursor: pointer; }
-        button:hover { background: #2f343d; border-color: #4c5360; }
+        button:hover:not(:disabled) { background: #2f343d; border-color: #4c5360; }
+        button:disabled { opacity: .55; cursor: not-allowed; }
         table { border-collapse: collapse; width: 100%; }
         td, th { border-bottom: 1px solid #2b2f36; padding: .4rem; text-align: left; font-size: .9rem; }
         th { color: #9ea4b0; }
@@ -38,9 +39,29 @@
         .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
         .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
         .err { color: #f26d6d; }
-        .ok  { color: #4ade80; }          /* green for success */
+        .ok  { color: #4ade80; }
         #summary span { margin-right: 1rem; }
-        .custom-only { display: none; }   /* hidden by default */
+        .custom-only { display: none; }
+
+        /* Spinner */
+        #spinner {
+            display: none;
+            align-items: center;
+            gap: .6rem;
+            margin: .75rem 0;
+            color: #9ea4b0;
+            font-size: .95rem;
+        }
+        #spinner.visible { display: flex; }
+        .spinner-ring {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #3a3f48;
+            border-top-color: #6b9fff;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -75,6 +96,11 @@
     <button id="preview" disabled>Preview (changes nothing)</button>
     <button id="apply" disabled>Apply to mailbox</button>
 </fieldset>
+
+<div id="spinner">
+    <div class="spinner-ring"></div>
+    <span id="spinner-text">Working…</span>
+</div>
 
 <p id="msg"></p>
 <div id="summary"></div>
@@ -111,8 +137,26 @@
         updateCustomVisibility();
     };
 
-    // initial state
     updateCustomVisibility();
+
+    // ---- loading / spinner helpers ----
+    function setLoading(on, text = 'Working…') {
+        $('spinner').classList.toggle('visible', on);
+        $('spinner-text').textContent = text;
+        $('connect').disabled = on;
+        $('preview').disabled = on || !$('preview').dataset.enabled;
+        $('apply').disabled = on || !$('apply').dataset.enabled;
+    }
+
+    // keep track of which buttons are actually allowed
+    function enablePreview(ok) {
+        $('preview').dataset.enabled = ok ? '1' : '';
+        if (!ok) $('preview').disabled = true;
+    }
+    function enableApply(ok) {
+        $('apply').dataset.enabled = ok ? '1' : '';
+        if (!ok) $('apply').disabled = true;
+    }
 
     async function api(path, body) {
         const res = await fetch(path, {
@@ -159,6 +203,8 @@
     }
 
     $('connect').onclick = async () => {
+        setLoading(true, 'Connecting…');
+        show('');
         try {
             const provider = $('provider').value;
             const body = {
@@ -167,7 +213,6 @@
                 secret: $('pass').value
             };
 
-            // only send host/port/ssl when Custom is selected
             if (!provider) {
                 body.host = $('host').value;
                 body.port = +$('port').value;
@@ -176,13 +221,20 @@
 
             await api('/api/connect', body);
             show('Connected.');
-            $('preview').disabled = false;
+            enablePreview(true);
+            enableApply(false);
         } catch (e) {
             show(e.message, true);
+            enablePreview(false);
+            enableApply(false);
+        } finally {
+            setLoading(false);
         }
     };
 
     async function run(apply) {
+        setLoading(true, apply ? 'Applying changes…' : 'Classifying…');
+        show('');
         try {
             const report = await api('/api/classify', {
                 limit: +$('limit').value,
@@ -192,9 +244,11 @@
             show(apply
                 ? 'Applied. Run a new preview to see what is left.'
                 : 'Preview only: nothing was changed in the mailbox.');
-            $('apply').disabled = apply || report.entries.length === 0;
+            enableApply(!apply && report.entries.length > 0);
         } catch (e) {
             show(e.message, true);
+        } finally {
+            setLoading(false);
         }
     }
 
