@@ -7,10 +7,7 @@ import dev.jefe.mailsorter.application.port.in.ApplyCommand;
 import dev.jefe.mailsorter.application.port.in.ApplyPlanUseCase;
 import dev.jefe.mailsorter.application.port.in.ApplyResult;
 import dev.jefe.mailsorter.application.port.in.Plan;
-import dev.jefe.mailsorter.application.port.out.AuditLog;
-import dev.jefe.mailsorter.application.port.out.ConnectionStore;
-import dev.jefe.mailsorter.application.port.out.MailProvider;
-import dev.jefe.mailsorter.application.port.out.PlanStore;
+import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.Action;
 
 import java.util.*;
@@ -31,22 +28,33 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
     @Override
     public ApplyResult execute(ApplyCommand command) {
         MailProvider mailbox = store.current().orElseThrow(NotConnectedException::new);
-        Plan plan = plans.find(command.planId()).orElseThrow(() -> new PlanNotFoundException(command.planId()));
+        Plan plan = plans.find(command.planId())
+                .orElseThrow(() -> new PlanNotFoundException(command.planId()));
         validate(plan, command.overrides());
+
+        // Build the final list of operations (respecting overrides)
+        List<MailOperation> ops = plan.entries().stream()
+                .map(e -> new MailOperation(
+                        e.emailId(),
+                        command.overrides().getOrDefault(e.emailId(), e.action())))
+                .toList();
+
+        // One bulk round-trip (the fast path you built this morning)
+        Set<String> failedIds = mailbox.applyAll(ops, REVIEW_LABEL);
 
         Map<Action, Long> applied = new EnumMap<>(Action.class);
         List<ApplyResult.Failure> failures = new ArrayList<>();
+
         for (Plan.Entry e : plan.entries()) {
             Action action = command.overrides().getOrDefault(e.emailId(), e.action());
-            try {
-                perform(mailbox, e.emailId(), action);
-                mailbox.markProcessed(e.emailId());
+            if (failedIds.contains(e.emailId())) {
+                failures.add(new ApplyResult.Failure(e.emailId(), "mailbox operation failed"));
+            } else {
                 audit.record(e.emailId(), e.classification(), action, action != e.action());
                 applied.merge(action, 1L, Long::sum);
-            } catch (MailAccessException ex) {
-                failures.add(new ApplyResult.Failure(e.emailId(), ex.getMessage()));
             }
         }
+
         plans.remove(plan.id());
         return new ApplyResult(applied, List.copyOf(failures));
     }
