@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -33,14 +34,20 @@ public final class JevClient {
         try {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
-                throw new ClassificationFailedException("Jev returned HTTP " + response.statusCode());
+                var ex = new ClassificationFailedException("JEV returned HTTP " + response.statusCode());
+                AppLog.error(JevClient.class, ex.getMessage(), ex);
+                throw ex;
             }
             return parse(response.body());
         } catch (IOException e) {
-            throw new ClassificationFailedException("Jev call failed: " + e.getMessage(), e);
+            var ex = new ClassificationFailedException("Jev call failed: " + e.getMessage(), e);
+            AppLog.error(JevClient.class, ex.getMessage(), ex);
+            throw ex;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ClassificationFailedException("Jev call interrupted", e);
+            var ex = new ClassificationFailedException("Jev call interrupted", e);
+            AppLog.error(JevClient.class, ex.getMessage(), ex);
+            throw ex;
         }
     }
 
@@ -56,7 +63,9 @@ public final class JevClient {
         JsonNode root = json.readTree(body);
         JsonNode answers = root.path("answers");
         if (!answers.isObject()) {
-            throw new ClassificationFailedException("Jev response has no 'answers' object");
+            var ex = new ClassificationFailedException("Jev response has no 'answers' object");
+            AppLog.error(JevClient.class, ex.getMessage(), ex);
+            throw ex;
         }
         return new JevResponse(root.path("model").asText("jev"), answers);
     }

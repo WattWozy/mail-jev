@@ -5,6 +5,7 @@ import dev.jefe.mailsorter.application.port.out.MailOperation;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 import jakarta.mail.*;
 import jakarta.mail.internet.ContentType;
 import jakarta.mail.internet.InternetAddress;
@@ -120,7 +121,9 @@ public final class ImapMailProvider implements MailProvider {
                 inbox.close(false);
             }
         } catch (MessagingException | IOException e) {
-            throw new MailAccessException("Could not list the inbox: " + e.getMessage(), e);
+            var ex = new MailAccessException("Could not list the inbox: " + e.getMessage(), e);
+            AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+            throw ex;
         }
     }
 
@@ -173,7 +176,9 @@ public final class ImapMailProvider implements MailProvider {
                 inbox.close(true); // single expunge
             }
         } catch (MessagingException e) {
-            throw new MailAccessException("Could not apply changes: " + e.getMessage(), e);
+            var ex = new MailAccessException("Could not apply changes: " + e.getMessage(), e);
+            AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+            throw ex;
         }
         return failed;
     }
@@ -205,9 +210,13 @@ public final class ImapMailProvider implements MailProvider {
                 }
             }
         } catch (MessagingException e) {
-            throw new MailAccessException("Mail operation failed for " + emailId + ": " + e.getMessage(), e);
+            var ex = new MailAccessException("Mail operation failed for " + emailId + ": " + e.getMessage(), e);
+            AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+            throw ex;
         }
-        throw new MailAccessException("Message not found: " + emailId);
+        var ex = new MailAccessException("Message not found: " + emailId);
+        AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+        throw ex;
     }
 
     /** Resolves all ids with as few round trips as possible (one SEARCH + one FETCH). */

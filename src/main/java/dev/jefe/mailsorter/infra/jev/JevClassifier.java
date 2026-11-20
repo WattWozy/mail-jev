@@ -8,6 +8,7 @@ import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.Classification;
 import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -71,6 +72,7 @@ public final class JevClassifier implements Classifier {
     private static Classification toClassification(JevClient.JevResponse response) {
         JsonNode answer = response.answers().path(QUESTION);
         if (!answer.hasNonNull("choice")) {
+            AppLog.warn(JevClassifier.class, "JEV response has no answer for '" + QUESTION + "'");
             throw new ClassificationFailedException("Jev response has no answer for '" + QUESTION + "'");
         }
         String choice = answer.get("choice").asText();

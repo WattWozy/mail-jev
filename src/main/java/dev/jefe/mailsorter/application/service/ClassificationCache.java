@@ -16,16 +16,16 @@ public final class ClassificationCache {
     /** classifierVersion = model + prompt version, so changing either invalidates old entries. */
     public record Key(String accountId, String emailId, String classifierVersion) {}
 
-    private record Entry(Classification value, long expiresAtNanos) {}
+    private record CacheEntry(Classification value, long expiresAtNanos) {}
 
     private final long ttlNanos;
-    private final Map<Key, Entry> map;
+    private final Map<Key, CacheEntry> map;
 
     public ClassificationCache(int maxEntries, Duration ttl) {
         this.ttlNanos = ttl.toNanos();
         this.map = new LinkedHashMap<>(256, 0.75f, true) { // access order = LRU
             @Override
-            protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
+            protected boolean removeEldestEntry(Map.Entry<Key, CacheEntry> eldest) {
                 return size() > maxEntries;
             }
         };
@@ -33,7 +33,7 @@ public final class ClassificationCache {
 
     /** Returns the cached value, or null on miss/expiry. */
     public synchronized Classification get(Key key) {
-        Entry e = map.get(key);
+        CacheEntry e = map.get(key);
         if (e == null) return null;
         if (System.nanoTime() - e.expiresAtNanos() >= 0) {
             map.remove(key);
@@ -43,7 +43,7 @@ public final class ClassificationCache {
     }
 
     public synchronized void put(Key key, Classification value) {
-        map.put(key, new Entry(value, System.nanoTime() + ttlNanos));
+        map.put(key, new CacheEntry(value, System.nanoTime() + ttlNanos));
     }
 
     public synchronized void remove(Key key) {

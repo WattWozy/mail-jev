@@ -4,6 +4,7 @@ import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.MailProviderFactory;
 import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
@@ -36,8 +37,10 @@ public final class ImapMailProviderFactory implements MailProviderFactory {
             store.connect(config.host(), config.port(), config.username(), config.secret());
             return new ImapMailProvider(store, config.host(), config.username());
         } catch (MessagingException e) {
-            throw new ConnectionFailedException(
+            var ex = new ConnectionFailedException(
                     "Could not connect to " + config.host() + ":" + config.port() + " – " + e.getMessage(), e);
+            AppLog.error(ImapMailProviderFactory.class, ex.getMessage(), ex);
+            throw ex;
         }
     }
 }

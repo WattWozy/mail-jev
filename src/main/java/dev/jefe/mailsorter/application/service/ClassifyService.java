@@ -7,16 +7,13 @@ import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
 import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.*;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.*;
 
 /** Use case: run the classifier against the connected inbox and apply (or preview) the policy. */
 public final class ClassifyService implements ClassifyUseCase {
@@ -57,17 +54,13 @@ public final class ClassifyService implements ClassifyUseCase {
     @Override
     public ClassificationReport execute(ClassifyCommand command) {
         MailProvider mailbox = store.current().orElseThrow(NotConnectedException::new);
-        long t0 = System.nanoTime();
         List<Email> emails = mailbox.listUnprocessed(command.limit());
-        long t1 = System.nanoTime();
 
         if (emails.isEmpty()) {
             return new ClassificationReport(List.of(), command.dryRun());
         }
 
         List<EvaluatedEmail> evaluated = evaluateAll(emails, mailbox.accountId());
-        long t2 = System.nanoTime();
-        System.out.printf("list=%dms classify=%dms%n", (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000);
 
         // Mailbox access stays on the calling thread: IMAP Folder/Store are not thread-safe.
         List<ClassificationReport.Entry> entries = new ArrayList<>(evaluated.size());
@@ -114,11 +107,18 @@ public final class ClassifyService implements ClassifyUseCase {
             return result;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Classification interrupted", e);
+            var ex = new RuntimeException("Classification interrupted", e);
+            AppLog.error(ClassifyService.class, ex.getMessage(), ex);
+            throw ex;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException re) throw re;
-            throw new RuntimeException("Classification failed", cause);
+            var ex = new RuntimeException("Classification failed", cause);
+            if (cause instanceof RuntimeException re) {
+                AppLog.error(ClassifyService.class, re.getMessage(), re);
+                throw re;
+            };
+            AppLog.error(ClassifyService.class, ex.getMessage(), ex);
+            throw ex;
         }
     }
 
@@ -143,13 +143,14 @@ public final class ClassifyService implements ClassifyUseCase {
             cache.put(key, classification);
             return classification;
         } catch (ClassificationFailedException e) {
-            return unknown(e); // transient failure: deliberately NOT cached
+            return unknown(key, e); // transient failure: deliberately NOT cached
         } finally {
             limiter.release();
         }
     }
 
-    private static Classification unknown(ClassificationFailedException e) {
+    private static Classification unknown(ClassificationCache.Key key, ClassificationFailedException e) {
+        AppLog.warn(ClassifyService.class, "JEV classification failed for key={" + key + "}, error={" + e + "}");
         return new Classification(Category.UNKNOWN, 0.0, "classification failed: " + e.getMessage());
     }
 

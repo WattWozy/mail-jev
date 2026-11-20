@@ -15,6 +15,7 @@ import dev.jefe.mailsorter.application.port.in.ConnectUseCase;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.MailboxConfig;
 import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -112,8 +113,10 @@ public final class WebServer implements AutoCloseable {
                 } catch (NotConnectedException e) {
                     response = new Response(409, Map.of("error", e.getMessage()));
                 } catch (ConnectionFailedException e) {
+                    AppLog.error(WebServer.class, e.getMessage(), e);
                     response = new Response(502, Map.of("error", e.getMessage()));
                 } catch (RuntimeException e) {
+                    AppLog.error(WebServer.class, e.getMessage(), e);
                     response = new Response(500, Map.of("error", "internal error"));
                 }
                 send(exchange, response.status(), "application/json", write(response.body()));
