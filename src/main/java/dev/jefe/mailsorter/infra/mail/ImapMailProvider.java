@@ -1,7 +1,9 @@
 package dev.jefe.mailsorter.infra.mail;
 
 import dev.jefe.mailsorter.application.exception.MailAccessException;
+import dev.jefe.mailsorter.application.port.out.MailOperation;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
+import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Email;
 import jakarta.mail.*;
 import jakarta.mail.internet.ContentType;
@@ -129,7 +131,57 @@ public final class ImapMailProvider implements MailProvider {
     @Override public void restoreToInbox(String id) { onMessage(id, (f, m) -> moveTo(f, m, INBOX)); }
     @Override public void addLabel(String id, String label) { onMessage(id, (f, m) -> m.setFlags(new Flags(label), true)); }
     @Override public void removeLabel(String id, String label) { onMessage(id, (f, m) -> m.setFlags(new Flags(label), false)); }
+    @Override
+    public Set<String> applyAll(List<MailOperation> ops, String reviewLabel) {
+        Set<String> failed = new HashSet<>();
+        if (ops.isEmpty()) return failed;
 
+        try {
+            IMAPFolder inbox = (IMAPFolder) store.getFolder(INBOX);
+            inbox.open(Folder.READ_WRITE);
+            try {
+                Map<String, Message> byId = resolve(inbox, ops);
+
+                Map<Action, List<Message>> byAction = new EnumMap<>(Action.class);
+                Map<Message, String> idOf = new IdentityHashMap<>();
+                for (MailOperation op : ops) {
+                    Message m = byId.get(op.emailId());
+                    if (m == null) { failed.add(op.emailId()); continue; }
+                    idOf.put(m, op.emailId());
+                    byAction.computeIfAbsent(op.action(), k -> new ArrayList<>()).add(m);
+                }
+
+                for (Map.Entry<Action, List<Message>> entry : byAction.entrySet()) {
+                    Message[] group = entry.getValue().toArray(Message[]::new);
+                    try {
+                        // Flag first: COPY/MOVE preserves flags, so moved mail keeps the marker.
+                        inbox.setFlags(group, new Flags(PROCESSED_FLAG), true);
+                        switch (entry.getKey()) {
+                            case ARCHIVE -> moveAll(inbox, group, archiveFolder);
+                            case MOVE_TO_TRASH -> moveAll(inbox, group, trashFolder);
+                            case FLAG_FOR_REVIEW -> inbox.setFlags(group, new Flags(reviewLabel), true);
+                            case KEEP -> { }
+                        }
+                    } catch (MessagingException e) {
+                        for (Message m : group) failed.add(idOf.get(m));
+                        try { // best effort: let the next run retry them
+                            inbox.setFlags(group, new Flags(PROCESSED_FLAG), false);
+                        } catch (MessagingException ignored) { }
+                    }
+                }
+            } finally {
+                inbox.close(true); // single expunge
+            }
+        } catch (MessagingException e) {
+            throw new MailAccessException("Could not apply changes: " + e.getMessage(), e);
+        }
+        return failed;
+    }
+
+    private static void move(IMAPFolder from, List<Message> msgs, Folder to) throws MessagingException {
+        if (msgs == null || msgs.isEmpty()) return;
+        from.moveMessages(msgs.toArray(Message[]::new), to); // uses MOVE if the server supports it, else COPY+DELETE
+    }
     @FunctionalInterface
     private interface MessageAction {
         void apply(Folder folder, Message message) throws MessagingException;
@@ -156,6 +208,47 @@ public final class ImapMailProvider implements MailProvider {
             throw new MailAccessException("Mail operation failed for " + emailId + ": " + e.getMessage(), e);
         }
         throw new MailAccessException("Message not found: " + emailId);
+    }
+
+    /** Resolves all ids with as few round trips as possible (one SEARCH + one FETCH). */
+    private Map<String, Message> resolve(IMAPFolder inbox, List<MailOperation> ops) throws MessagingException {
+        Map<String, Message> found = new HashMap<>();
+
+        List<String> messageIds = ops.stream().map(MailOperation::emailId)
+                .filter(id -> !id.startsWith(FALLBACK_PREFIX)).distinct().toList();
+        if (!messageIds.isEmpty()) {
+            SearchTerm[] terms = messageIds.stream()
+                    .map(id -> new HeaderTerm("Message-ID", id)).toArray(SearchTerm[]::new);
+            Message[] hits = inbox.search(terms.length == 1 ? terms[0] : new OrTerm(terms));
+
+            FetchProfile fp = new FetchProfile();
+            fp.add("Message-ID");
+            inbox.fetch(hits, fp);
+            for (Message m : hits) {
+                String id = messageIdOf(m);
+                if (id != null) found.putIfAbsent(id, m);
+            }
+        }
+
+        // Rare: mails without a Message-ID. Only scan the still-unprocessed ones, not the whole inbox.
+        if (ops.stream().anyMatch(o -> o.emailId().startsWith(FALLBACK_PREFIX))) {
+            Message[] candidates = inbox.search(new FlagTerm(new Flags(PROCESSED_FLAG), false));
+            FetchProfile fp = new FetchProfile();
+            fp.add(FetchProfile.Item.ENVELOPE);
+            fp.add("Message-ID");
+            inbox.fetch(candidates, fp);
+            for (Message m : candidates) {
+                if (messageIdOf(m) == null) found.putIfAbsent(fallbackId(m), m);
+            }
+        }
+        return found;
+    }
+
+    private void moveAll(IMAPFolder from, Message[] msgs, String destinationName) throws MessagingException {
+        if (from.getFullName().equalsIgnoreCase(destinationName)) return;
+        Folder destination = store.getFolder(destinationName);
+        if (!destination.exists()) destination.create(Folder.HOLDS_MESSAGES);
+        from.moveMessages(msgs, destination); // MOVE if the server supports it, else COPY + DELETE
     }
 
     private void moveTo(Folder source, Message message, String destinationName) throws MessagingException {
@@ -189,12 +282,11 @@ public final class ImapMailProvider implements MailProvider {
     }
 
     private static Email toEmail(Message message) throws MessagingException, IOException {
-        // getHeader(name, null) is served from the prefetched headers; getAllHeaders() would hit the server again.
         Map<String, String> headers = new LinkedHashMap<>();
         for (String name : HEADER_NAMES) {
-            String value = Arrays.toString(message.getHeader(name));
-            if (value != null) {
-                headers.put(name, value);
+            String[] values = message.getHeader(name);
+            if (values != null && values.length > 0) {
+                headers.put(name, String.join(", ", values));
             }
         }
         String messageId = messageIdOf(message);

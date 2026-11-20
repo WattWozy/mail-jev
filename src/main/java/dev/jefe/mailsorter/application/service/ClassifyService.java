@@ -5,15 +5,13 @@ import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.ClassificationReport;
 import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
 import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
-import dev.jefe.mailsorter.application.port.out.AuditLog;
-import dev.jefe.mailsorter.application.port.out.Classifier;
-import dev.jefe.mailsorter.application.port.out.ConnectionStore;
-import dev.jefe.mailsorter.application.port.out.MailProvider;
+import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,14 +71,26 @@ public final class ClassifyService implements ClassifyUseCase {
 
         // Mailbox access stays on the calling thread: IMAP Folder/Store are not thread-safe.
         List<ClassificationReport.Entry> entries = new ArrayList<>(evaluated.size());
+
+        Set<String> failed = Set.of();
+        if (!command.dryRun()) {
+            long a = System.nanoTime();
+            failed = mailbox.applyAll(
+                    evaluated.stream()
+                            .map(i -> new MailOperation(i.email().id(), i.action()))
+                            .toList(),
+                    REVIEW_LABEL);
+            System.out.printf("apply=%dms failed=%d%n", (System.nanoTime() - a) / 1_000_000, failed.size());
+        }
+
         for (EvaluatedEmail item : evaluated) {
             Email email = item.email();
-
-            audit.record(email.id(), item.classification(), item.action(), command.dryRun()); //todo: performance
-            if (!command.dryRun()) {
-                perform(mailbox, email.id(), item.action());
-                mailbox.markProcessed(email.id());
-                cache.remove(item.cacheKey());
+            boolean applied = command.dryRun() || !failed.contains(email.id());
+            if (applied) {
+                audit.record(email.id(), item.classification(), item.action(), command.dryRun());
+                if (!command.dryRun()) {
+                    cache.remove(item.cacheKey());
+                }
             }
             entries.add(new ClassificationReport.Entry(
                     email.id(), email.from(), email.subject(), item.classification(), item.action()

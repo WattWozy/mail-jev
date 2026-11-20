@@ -2,10 +2,12 @@ package dev.jefe.mailsorter.application.port.out;
 
 import dev.jefe.mailsorter.domain.Email;
 import java.util.List;
+import java.util.Set;
 
 /** Driven port. Adapters: IMAP, Gmail API, Microsoft Graph. */
 public interface MailProvider {
     List<Email> listUnprocessed(int limit);
+    Set<String> applyAll(List<MailOperation> operations, String reviewLabel);
     String accountId();
     void markProcessed(String emailId);
     void archive(String emailId);

@@ -3,7 +3,9 @@ package dev.jefe.mailsorter.application;
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.*;
+
 import java.util.*;
+import java.util.stream.Collectors;
 
 /** In-memory test doubles for the driven ports. */
 final class Fakes {
@@ -20,6 +22,9 @@ final class Fakes {
         final List<String> processed = new ArrayList<>();
         final List<String> restored = new ArrayList<>();
         final Map<String, List<String>> labels = new HashMap<>();
+        final Set<String> failOn = new HashSet<>();
+        final List<List<MailOperation>> applyCalls = new ArrayList<>();
+        FakeMailProvider failingOn(String... ids) { failOn.addAll(List.of(ids)); return this; }
 
         FakeMailProvider withEmails(Email... emails) { inbox.addAll(List.of(emails)); return this; }
         @Override public String accountId(){ return "you@fakemail.com";};
@@ -34,6 +39,28 @@ final class Fakes {
         @Override public void archive(String id) { archived.add(id); }
         @Override public void moveToTrash(String id) { trashed.add(id); }
         @Override public void addLabel(String id, String label) { labels.computeIfAbsent(id, k -> new ArrayList<>()).add(label); }
+        @Override
+        public Set<String> applyAll(List<MailOperation> ops, String reviewLabel) {
+            applyCalls.add(List.copyOf(ops));
+            Set<String> failed = new HashSet<>();
+            Set<String> inInbox = inbox.stream().map(Email::id).collect(Collectors.toSet());
+
+            for (MailOperation op : ops) {
+                String id = op.emailId();
+                if (failOn.contains(id) || !inInbox.contains(id)) {
+                    failed.add(id);
+                    continue;
+                }
+                markProcessed(id);
+                switch (op.action()) {
+                    case ARCHIVE -> archive(id);
+                    case MOVE_TO_TRASH -> moveToTrash(id);
+                    case FLAG_FOR_REVIEW -> addLabel(id, reviewLabel);
+                    case KEEP -> { }
+                }
+            }
+            return failed;
+        }
     }
 
     static final class FakeClassifier implements Classifier {
