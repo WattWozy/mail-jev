@@ -4,9 +4,9 @@ import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.service.ApplyPlanService;
 import dev.jefe.mailsorter.application.service.ClassifyService;
 import dev.jefe.mailsorter.application.service.ConnectService;
+import dev.jefe.mailsorter.application.service.GetEmailService;
 import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
 import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule;
-import dev.jefe.mailsorter.application.service.prefilter.rules.ListUnsubscribeRule;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.PolicyEngine;
@@ -49,7 +49,8 @@ public final class CompositionRoot {
                 config.webPort(),
                 new ConnectService(new ImapMailProviderFactory(), store),
                 new ClassifyService(store, classifier, policy, planStore),
-                new ApplyPlanService(store, planStore, auditLog)   // ← add this
+                new ApplyPlanService(store, planStore, auditLog),
+                new GetEmailService(store)
         );
     }
 }

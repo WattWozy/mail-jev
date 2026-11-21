@@ -5,6 +5,7 @@ import dev.jefe.mailsorter.application.port.out.MailOperation;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.EmailContent;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 import jakarta.mail.*;
 import jakarta.mail.internet.ContentType;
@@ -36,7 +37,7 @@ public final class ImapMailProvider implements MailProvider {
     static final String PROCESSED_FLAG = "mail-sorter-processed";
     private static final String INBOX = "INBOX";
     private static final String FALLBACK_PREFIX = "fallback:";
-    private static final int SNIPPET_CHARS = 800;
+    private static final int SNIPPET_CHARS = 160;
     private static final int[] LOOKBACK_DAYS = {30, 90, 365};
 
     /** Headers exposed to the classifier. All of them are prefetched in a single batch. */
@@ -61,6 +62,49 @@ public final class ImapMailProvider implements MailProvider {
         this.trashFolder = trashFolder;
         this.host = host;
         this.username = username;
+    }
+
+    @Override
+    public EmailContent read(String emailId) {
+        try {
+            for (String folderName : List.of(INBOX, archiveFolder, trashFolder)) {
+                Folder folder = store.getFolder(folderName);
+
+                if (!folder.exists()) continue;
+
+                folder.open(Folder.READ_ONLY);
+                try {
+                    Message message = find(folder, emailId);
+
+                    if (message != null) {
+                        Date sentDate = message.getSentDate();
+
+                        return new EmailContent(
+                                emailId,
+                                senderOf(message),
+                                subjectOf(message),
+                                sentDate == null ? "" : sentDate.toInstant().toString(),
+                                extractText(message)
+                        );
+                    }
+                } catch (IOException e) {
+                    var ex = new RuntimeException(e);
+                    AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+                    throw ex;
+                } finally {
+                    folder.close(false);
+                }
+            }
+        } catch (MessagingException e) {
+            var ex = new MailAccessException(
+                    "Could not read email " + emailId + ": " + e.getMessage(), e);
+            AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+            throw ex;
+        }
+
+        var ex = new MailAccessException("Message not found: " + emailId);
+        AppLog.error(ImapMailProvider.class, ex.getMessage(), ex);
+        throw ex;
     }
 
     @Override
@@ -300,7 +344,8 @@ public final class ImapMailProvider implements MailProvider {
         }
         String messageId = messageIdOf(message);
         String id = messageId != null ? messageId : fallbackId(message);
-        return new Email(id, senderOf(message), subjectOf(message), snippet(message), headers);
+        return new Email(id, senderOf(message), subjectOf(message),
+                snippet(extractText(message)), headers);
     }
 
     private static String messageIdOf(Message message) throws MessagingException {
@@ -318,57 +363,78 @@ public final class ImapMailProvider implements MailProvider {
         return message.getSubject() == null ? "" : message.getSubject();
     }
 
-    /** First text/plain content, skipping attachments; reads only a short prefix of the part. */
-    private static String snippet(Part part) throws MessagingException, IOException {
-        if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
+    /** Extract the full plain-text body, using HTML only as fallback. */
+    private static String extractText(Part part)
+            throws MessagingException, IOException {
+
+        String plainText = extractMimeText(part, "text/plain");
+        if (!plainText.isBlank()) {
+            return plainText;
+        }
+
+        String html = extractMimeText(part, "text/html");
+        return html.replaceAll("<[^>]+>", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
+    }
+
+    private static String extractMimeText(Part part, String mimeType)
+            throws MessagingException, IOException {
+
+        if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())
+                || part.getFileName() != null) {
             return "";
         }
 
-        if (part.isMimeType("text/plain")) {
-            return readPrefix(part);
-        }
-
-        if (part.isMimeType("text/html")) {
-            // Only as fallback – still limited
-            String html = readPrefix(part);
-            // very cheap strip (or keep your existing cleaner if you prefer)
-            return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").strip();
+        if (part.isMimeType(mimeType)) {
+            return readTextPart(part);
         }
 
         if (part.isMimeType("multipart/*")) {
-            Multipart mp = (Multipart) part.getContent();
-            // Prefer text/plain first
-            for (int i = 0; i < mp.getCount(); i++) {
-                BodyPart bp = mp.getBodyPart(i);
-                if (bp.isMimeType("text/plain") && !Part.ATTACHMENT.equalsIgnoreCase(bp.getDisposition())) {
-                    String s = readPrefix(bp);
-                    if (!s.isEmpty()) return s;
+            Multipart multipart = (Multipart) part.getContent();
+
+            for (int i = 0; i < multipart.getCount(); i++) {
+                String text = extractMimeText(
+                        multipart.getBodyPart(i), mimeType);
+
+                if (!text.isBlank()) {
+                    return text;
                 }
             }
-            // then anything else
-            for (int i = 0; i < mp.getCount(); i++) {
-                String s = snippet(mp.getBodyPart(i));
-                if (!s.isEmpty()) return s;
-            }
         }
+
         return "";
     }
 
-    /** Reads at most SNIPPET_CHARS * 4 raw bytes (decoded from base64/quoted-printable by the stream). */
-    private static String readPrefix(Part part) throws MessagingException, IOException {
+    /** Reads the entire text part using its declared charset. */
+    private static String readTextPart(Part part)
+            throws MessagingException, IOException {
+
         Charset charset = StandardCharsets.UTF_8;
+
         try {
-            String declared = new ContentType(part.getContentType()).getParameter("charset");
-            if (declared != null) charset = Charset.forName(declared);
+            String declared =
+                    new ContentType(part.getContentType()).getParameter("charset");
+
+            if (declared != null) {
+                charset = Charset.forName(declared);
+            }
         } catch (ParseException | IllegalArgumentException ignored) {
-            // unknown or malformed charset: fall back to UTF-8
+            // Fall back to UTF-8.
         }
 
         try (InputStream in = part.getInputStream()) {
-            byte[] buffer = in.readNBytes(SNIPPET_CHARS * 4);
-            String text = new String(buffer, charset).strip().replaceAll("\\s+", " ");
-            return text.length() <= SNIPPET_CHARS ? text : text.substring(0, SNIPPET_CHARS);
+            return new String(in.readAllBytes(), charset).strip();
         }
+    }
+
+    /** Creates the short preview used in the email list. */
+    private static String snippet(String body) {
+        String normalized = body.replaceAll("\\s+", " ").strip();
+
+        return normalized.length() <= SNIPPET_CHARS
+                ? normalized
+                : normalized.substring(0, SNIPPET_CHARS).stripTrailing();
     }
 
     private static Message[] searchWithProgressiveWindow(Folder inbox, SearchTerm baseTerm, int limit)

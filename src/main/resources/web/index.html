@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <title>Mail Sorter</title>
     <style>
@@ -35,6 +36,7 @@
         td, th { border-bottom: 1px solid #2b2f36; padding: .4rem; text-align: left; font-size: .9rem; }
         th { color: #9ea4b0; }
         tr:hover td { background: #1e2126; }
+        tr.selected td { background: #252a33; }
         .badge {
             padding: .1rem .55rem;
             border-radius: .7rem;
@@ -45,6 +47,8 @@
             user-select: none;
         }
         .badge:hover { filter: brightness(1.15); }
+        .badge.locked { cursor: not-allowed; opacity: .6; }
+        .badge.locked:hover { filter: none; }
         .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
         .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
         .err { color: #f26d6d; }
@@ -70,6 +74,64 @@
             animation: spin .7s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Expanded row that hosts the preview */
+        #rows tr.detail-row:hover td,
+        #rows tr.detail-row td { padding: 0; background: #1e2126; }
+
+        /* ── Email preview ─────────────────────────────── */
+        #preview {
+            display: none;
+            margin: 0;
+            border: none;
+            background: #1e2126;
+            overflow: hidden;
+        }
+        #preview.visible { display: block; }
+
+        #preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid #2b2f36;
+            background: #22262c;
+        }
+        #preview-meta { flex: 1; min-width: 0; }
+        #preview-meta .from { font-weight: 600; color: #e2e5eb; margin-bottom: .2rem; }
+        #preview-meta .subject { color: #c5cad3; margin-bottom: .15rem; }
+        #preview-meta .date { font-size: .8rem; color: #9ea4b0; }
+        #preview-close {
+            flex-shrink: 0;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: .25rem .55rem;
+        }
+
+        #preview-body {
+            margin: 0;
+            padding: 1rem;
+            max-height: 420px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+            font-size: .85rem;
+            line-height: 1.45;
+            color: #c8ccd4;
+            background: #181a1d;
+        }
+        #preview-body.empty {
+            color: #6b7280;
+            font-style: italic;
+            font-family: system-ui, sans-serif;
+        }
+        #preview-loading {
+            padding: 1.5rem;
+            text-align: center;
+            color: #9ea4b0;
+        }
     </style>
 </head>
 <body>
@@ -91,8 +153,8 @@
 
     <label class="custom-only">Host <input id="host" value="127.0.0.1"></label>
     <label class="custom-only">Port <input id="port" type="number" value="3143" size="5"></label>
-    <label>User <input id="user" value=""></label>
-    <label>Password <input id="pass" type="password" value=""></label>
+    <label>User <input id="user" value="" autocomplete="username"></label>
+    <label>Password <input id="pass" type="password" value="" autocomplete="current-password"></label>
     <label class="custom-only"><input id="ssl" type="checkbox"> SSL</label>
 
     <button id="connect">Connect</button>
@@ -101,7 +163,7 @@
 <fieldset>
     <legend>2. Plan &amp; Apply</legend>
     <label>Batch size <input id="limit" type="number" value="25" size="4"></label>
-    <button id="preview" disabled>Preview (creates a plan)</button>
+    <button id="preview-btn" disabled>Preview (creates a plan)</button>
     <button id="apply" disabled>Apply plan to mailbox</button>
 </fieldset>
 
@@ -117,6 +179,23 @@
     <tbody id="rows"></tbody>
 </table>
 
+<!-- Permanent home of the preview node. It is moved into the expanded row
+     while open and ALWAYS moved back here before that row is removed. -->
+<div id="preview-holder">
+    <div id="preview">
+        <div id="preview-header">
+            <div id="preview-meta">
+                <div class="from" id="preview-from"></div>
+                <div class="subject" id="preview-subject"></div>
+                <div class="date" id="preview-date"></div>
+            </div>
+            <button id="preview-close" title="Close preview">✕</button>
+        </div>
+        <div id="preview-loading" style="display:none;">Loading…</div>
+        <pre id="preview-body" class="empty">Select a row to preview the email (plain text only).</pre>
+    </div>
+</div>
+
 <script>
     const $ = id => document.getElementById(id);
 
@@ -124,15 +203,19 @@
     let currentPlanId = null;
     // user overrides: { emailId: "KEEP" | "ARCHIVE" | ... }
     let overrides = {};
+    // currently open email id (for highlighting / stale-response check)
+    let selectedEmailId = null;
+    // the <tr> that hosts the preview while it is open
+    let detailRow = null;
 
     const ACTIONS = ['KEEP', 'FLAG_FOR_REVIEW', 'ARCHIVE', 'MOVE_TO_TRASH'];
 
     const providers = {
-        gmx:     { host: 'imap.gmx.com',     port: 993, ssl: true },
-        gmail:   { host: 'imap.gmail.com',   port: 993, ssl: true },
+        gmx:     { host: 'imap.gmx.com',          port: 993, ssl: true },
+        gmail:   { host: 'imap.gmail.com',        port: 993, ssl: true },
         outlook: { host: 'outlook.office365.com', port: 993, ssl: true },
-        yahoo:   { host: 'imap.mail.yahoo.com', port: 993, ssl: true },
-        icloud:  { host: 'imap.mail.me.com', port: 993, ssl: true },
+        yahoo:   { host: 'imap.mail.yahoo.com',   port: 993, ssl: true },
+        icloud:  { host: 'imap.mail.me.com',      port: 993, ssl: true },
     };
 
     function updateCustomVisibility() {
@@ -157,14 +240,14 @@
         $('spinner').classList.toggle('visible', on);
         $('spinner-text').textContent = text;
         $('connect').disabled = on;
-        $('preview').disabled = on || !$('preview').dataset.enabled;
+        $('preview-btn').disabled = on || !$('preview-btn').dataset.enabled;
         $('apply').disabled = on || !$('apply').dataset.enabled;
     }
 
     function enablePreview(ok) {
-        $('preview').dataset.enabled = ok ? '1' : '';
-        if (!ok) $('preview').disabled = true;
-        else if (!$('spinner').classList.contains('visible')) $('preview').disabled = false;
+        $('preview-btn').dataset.enabled = ok ? '1' : '';
+        if (!ok) $('preview-btn').disabled = true;
+        else if (!$('spinner').classList.contains('visible')) $('preview-btn').disabled = false;
     }
 
     function enableApply(ok) {
@@ -179,7 +262,8 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        const data = await res.json();
+        let data = {};
+        try { data = await res.json(); } catch (_) { /* non-JSON error body */ }
         if (!res.ok) throw new Error(data.error || res.statusText);
         return data;
     }
@@ -191,9 +275,17 @@
 
     function cell(row, text) {
         const td = document.createElement('td');
-        td.textContent = text;
+        td.textContent = text ?? '';
         row.appendChild(td);
         return td;
+    }
+
+    function renderSummary(counts) {
+        $('summary').replaceChildren(...Object.entries(counts).map(([action, n]) => {
+            const s = document.createElement('span');
+            s.textContent = action + ': ' + n;
+            return s;
+        }));
     }
 
     function updateSummaryFromTable() {
@@ -202,50 +294,148 @@
             const a = b.textContent;
             counts[a] = (counts[a] || 0) + 1;
         });
-        $('summary').replaceChildren(...Object.entries(counts).map(([action, n]) => {
-            const s = document.createElement('span');
-            s.textContent = action + ': ' + n;
-            return s;
-        }));
+        renderSummary(counts);
     }
+
+    // ── Preview helpers ─────────────────────────────────
+
+    function closePreview() {
+        selectedEmailId = null;
+
+        document.querySelectorAll('#rows tr.selected').forEach(r => r.classList.remove('selected'));
+
+        // Rescue the preview node BEFORE removing the row that contains it,
+        // otherwise it is destroyed and every later $('preview') is null.
+        const p = $('preview');
+        p.classList.remove('visible');
+        $('preview-holder').appendChild(p);
+
+        detailRow?.remove();
+        detailRow = null;
+
+        $('preview-from').textContent = '';
+        $('preview-subject').textContent = '';
+        $('preview-date').textContent = '';
+        $('preview-body').textContent = '';
+        $('preview-body').classList.add('empty');
+        $('preview-loading').style.display = 'none';
+    }
+
+    async function openPreview(emailId, from, subject, row) {
+        closePreview();
+
+        selectedEmailId = emailId || null;
+        row.classList.add('selected');
+
+        // Expandable row immediately below the clicked row
+        detailRow = document.createElement('tr');
+        detailRow.className = 'detail-row';
+
+        const detailCell = document.createElement('td');
+        detailCell.colSpan = 6;
+        detailRow.appendChild(detailCell);
+        row.after(detailRow);
+
+        // Move the existing preview into the expanded row
+        detailCell.appendChild($('preview'));
+        $('preview').classList.add('visible');
+
+        $('preview-from').textContent = from || '(unknown sender)';
+        $('preview-subject').textContent = subject || '(no subject)';
+        $('preview-date').textContent = '';
+        $('preview-loading').style.display = 'block';
+        $('preview-body').textContent = '';
+        $('preview-body').classList.remove('empty');
+
+        if (!emailId) {
+            $('preview-loading').style.display = 'none';
+            $('preview-body').textContent = 'No email id found on this row.';
+            return;
+        }
+
+        try {
+            const data = await api('/api/email', { emailId });
+
+            // Ignore responses from a row that is no longer selected
+            if (selectedEmailId !== emailId) return;
+
+            const text = data.textBody ?? data.body ?? data.plainText;
+            if (text) {
+                $('preview-body').textContent = text;
+            } else {
+                $('preview-body').textContent = '(no plain-text body available)';
+                $('preview-body').classList.add('empty');
+            }
+
+            if (data.date) $('preview-date').textContent = data.date;
+            if (data.from) $('preview-from').textContent = data.from;
+            if (data.subject) $('preview-subject').textContent = data.subject;
+
+        } catch (e) {
+            if (selectedEmailId === emailId) {
+                $('preview-body').textContent = 'Failed to load email: ' + e.message;
+            }
+        } finally {
+            if (selectedEmailId === emailId) {
+                $('preview-loading').style.display = 'none';
+            }
+        }
+    }
+
+    $('preview-close').onclick = closePreview;
+
+    // ── Plan rendering ──────────────────────────────────
 
     function renderPlan(plan) {
         currentPlanId = plan.planId;
         overrides = {};
+        closePreview();
 
-        $('summary').replaceChildren(...Object.entries(plan.counts).map(([action, n]) => {
-            const s = document.createElement('span');
-            s.textContent = action + ': ' + n;
-            return s;
-        }));
+        renderSummary(plan.counts || {});
 
         $('rows').replaceChildren(...plan.entries.map(e => {
             const tr = document.createElement('tr');
+
+            const key = e.emailId ?? e.id ?? e.uid ?? e.messageId
+                ?? e.messageUid ?? e.mailId ?? e.entryId;
+
+            if (key != null) tr.dataset.emailId = String(key);
+
             cell(tr, e.from);
             cell(tr, e.subject);
             cell(tr, e.category);
-            cell(tr, Math.round(e.confidence * 100) + '%');
+            cell(tr, e.confidence != null ? Math.round(e.confidence * 100) + '%' : '–');
 
             const badge = document.createElement('span');
             badge.className = 'badge ' + e.action;
             badge.textContent = e.action;
-            badge.title = 'Click to change action';
 
-            // Prefer the most common id field names the backend might use
-            const key = e.emailId ?? e.id ?? e.uid ?? e.messageId;
-
-            badge.onclick = () => {
-                const current = badge.textContent;
-                const idx = ACTIONS.indexOf(current);
-                const next = ACTIONS[(idx + 1) % ACTIONS.length];
-                badge.textContent = next;
-                badge.className = 'badge ' + next;
-                if (key != null) overrides[key] = next;
-                updateSummaryFromTable();
-            };
+            if (key != null) {
+                badge.title = 'Click to change action';
+                badge.onclick = (ev) => {
+                    ev.stopPropagation();
+                    const idx = ACTIONS.indexOf(badge.textContent);
+                    const next = ACTIONS[(idx + 1) % ACTIONS.length];
+                    badge.textContent = next;
+                    badge.className = 'badge ' + next;
+                    overrides[key] = next;
+                    updateSummaryFromTable();
+                };
+            } else {
+                // Without an id the override can't be sent to the backend,
+                // so don't let the UI pretend it changed.
+                badge.classList.add('locked');
+                badge.title = 'This entry has no id, so its action cannot be changed';
+                badge.onclick = ev => ev.stopPropagation();
+            }
 
             cell(tr, '').appendChild(badge);
             cell(tr, e.reason);
+
+            tr.style.cursor = 'pointer';
+            tr.onclick = () => tr.classList.contains('selected')
+                ? closePreview()
+                : openPreview(key, e.from, e.subject, tr);
             return tr;
         }));
     }
@@ -253,16 +443,19 @@
     function clearPlan() {
         currentPlanId = null;
         overrides = {};
+        closePreview();
         $('summary').replaceChildren();
         $('rows').replaceChildren();
         enableApply(false);
     }
 
+    // ── Actions ─────────────────────────────────────────
+
     $('connect').onclick = async () => {
         setLoading(true, 'Connecting…');
         show('');
-        clearPlan();
         try {
+            clearPlan();
             const provider = $('provider').value;
             const body = {
                 provider: provider,
@@ -272,6 +465,8 @@
             if (!provider) {
                 body.host = $('host').value;
                 body.port = +$('port').value;
+                // kept as a string to match the previous behaviour; if your
+                // backend expects a real boolean, send $('ssl').checked instead
                 body.ssl  = String($('ssl').checked);
             }
             await api('/api/connect', body);
@@ -285,7 +480,7 @@
         }
     };
 
-    $('preview').onclick = async () => {
+    $('preview-btn').onclick = async () => {
         setLoading(true, 'Classifying…');
         show('');
         try {
@@ -294,7 +489,7 @@
             });
             renderPlan(plan);
             show(plan.entries.length
-                ? 'Plan ready. Review and click Apply when you are happy with it.'
+                ? 'Plan ready. Click a row to preview the email, or change the action badge.'
                 : 'Nothing to do – inbox is clean (or limit is zero).');
             enableApply(plan.entries.length > 0);
         } catch (e) {
@@ -314,7 +509,7 @@
         try {
             const result = await api('/api/apply', {
                 planId: currentPlanId,
-                overrides: overrides          // { emailId: "KEEP", ... }
+                overrides: overrides
             });
 
             const applied = Object.entries(result.applied || {})
@@ -322,10 +517,10 @@
                 .join(', ') || 'none';
             const failCount = (result.failures || []).length;
 
+            clearPlan();
             show(failCount
                 ? `Applied (${applied}). ${failCount} failure(s) – they can be retried next run.`
                 : `Applied (${applied}).`);
-            clearPlan();
         } catch (e) {
             show(e.message, true);
         } finally {

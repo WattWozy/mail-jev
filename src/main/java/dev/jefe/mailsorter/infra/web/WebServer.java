@@ -11,6 +11,7 @@ import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.domain.Action;
+import dev.jefe.mailsorter.domain.EmailContent;
 import dev.jefe.mailsorter.domain.MailboxConfig;
 import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
 import dev.jefe.mailsorter.infra.logging.AppLog;
@@ -33,19 +34,23 @@ public final class WebServer implements AutoCloseable {
     private final ConnectUseCase connect;
     private final ClassifyUseCase classify;
     private final ApplyPlanUseCase apply;
+    private final GetEmailUseCase getEmail;
     private final ObjectMapper json = new ObjectMapper();
 
     public WebServer(String host, int port,
                      ConnectUseCase connect,
                      ClassifyUseCase classify,
-                     ApplyPlanUseCase apply) throws IOException {
+                     ApplyPlanUseCase apply,
+                     GetEmailUseCase getEmail) throws IOException {
         this.connect = connect;
         this.classify = classify;
         this.apply = apply;
+        this.getEmail = getEmail;
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/api/connect", post(this::handleConnect));
         server.createContext("/api/classify", post(this::handleClassify));
         server.createContext("/api/apply", post(this::handleApply));
+        server.createContext("/api/email", post(this::handleEmail));
         server.createContext("/", this::serveUi);
     }
 
@@ -108,6 +113,30 @@ public final class WebServer implements AutoCloseable {
 
         ApplyResult result = apply.execute(new ApplyCommand(planId, overrides));
         return new Response(200, toJson(result));
+    }
+
+    private Response handleEmail(JsonNode body) {
+        String emailId = body.path("emailId").asText(null);
+        if (emailId == null || emailId.isBlank()) {
+            return new Response(400, Map.of("error", "emailId is required"));
+        }
+
+        try {
+            EmailContent content = getEmail.execute(emailId);
+            return new Response(200, toJson(content));
+        } catch (Exception e) {
+            return new Response(404, Map.of("error", e.getMessage()));
+        }
+    }
+
+    private static Map<String, Object> toJson(EmailContent content) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("emailId", content.emailId());
+        m.put("from", content.from());
+        m.put("subject", content.subject());
+        m.put("date", content.date());       // or whatever the accessor is called
+        m.put("textBody", content.textBody());
+        return m;
     }
 
     private static Map<String, Object> toJson(Plan plan) {

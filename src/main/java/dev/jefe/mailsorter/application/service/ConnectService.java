@@ -18,7 +18,7 @@ public final class ConnectService implements ConnectUseCase {
     }
 
     public void execute(MailboxConfig config) {
-        MailProvider provider = factory.connect(config); // throws -> nothing is stored
+        MailProvider provider = factory.connect(config);
         store.save(provider);
     }
 }
