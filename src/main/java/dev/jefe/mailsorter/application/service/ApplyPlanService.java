@@ -1,6 +1,5 @@
 package dev.jefe.mailsorter.application.service;
 
-import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.ApplyCommand;

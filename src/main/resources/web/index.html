@@ -35,7 +35,16 @@
         td, th { border-bottom: 1px solid #2b2f36; padding: .4rem; text-align: left; font-size: .9rem; }
         th { color: #9ea4b0; }
         tr:hover td { background: #1e2126; }
-        .badge { padding: .1rem .55rem; border-radius: .7rem; font-size: .8rem; color: #f4f6f8; white-space: nowrap; }
+        .badge {
+            padding: .1rem .55rem;
+            border-radius: .7rem;
+            font-size: .8rem;
+            color: #f4f6f8;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        .badge:hover { filter: brightness(1.15); }
         .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
         .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
         .err { color: #f26d6d; }
@@ -113,6 +122,10 @@
 
     // holds the plan currently shown in the table
     let currentPlanId = null;
+    // user overrides: { emailId: "KEEP" | "ARCHIVE" | ... }
+    let overrides = {};
+
+    const ACTIONS = ['KEEP', 'FLAG_FOR_REVIEW', 'ARCHIVE', 'MOVE_TO_TRASH'];
 
     const providers = {
         gmx:     { host: 'imap.gmx.com',     port: 993, ssl: true },
@@ -183,8 +196,22 @@
         return td;
     }
 
+    function updateSummaryFromTable() {
+        const counts = {};
+        document.querySelectorAll('#rows .badge').forEach(b => {
+            const a = b.textContent;
+            counts[a] = (counts[a] || 0) + 1;
+        });
+        $('summary').replaceChildren(...Object.entries(counts).map(([action, n]) => {
+            const s = document.createElement('span');
+            s.textContent = action + ': ' + n;
+            return s;
+        }));
+    }
+
     function renderPlan(plan) {
         currentPlanId = plan.planId;
+        overrides = {};
 
         $('summary').replaceChildren(...Object.entries(plan.counts).map(([action, n]) => {
             const s = document.createElement('span');
@@ -198,9 +225,25 @@
             cell(tr, e.subject);
             cell(tr, e.category);
             cell(tr, Math.round(e.confidence * 100) + '%');
+
             const badge = document.createElement('span');
             badge.className = 'badge ' + e.action;
             badge.textContent = e.action;
+            badge.title = 'Click to change action';
+
+            // Prefer the most common id field names the backend might use
+            const key = e.emailId ?? e.id ?? e.uid ?? e.messageId;
+
+            badge.onclick = () => {
+                const current = badge.textContent;
+                const idx = ACTIONS.indexOf(current);
+                const next = ACTIONS[(idx + 1) % ACTIONS.length];
+                badge.textContent = next;
+                badge.className = 'badge ' + next;
+                if (key != null) overrides[key] = next;
+                updateSummaryFromTable();
+            };
+
             cell(tr, '').appendChild(badge);
             cell(tr, e.reason);
             return tr;
@@ -209,6 +252,7 @@
 
     function clearPlan() {
         currentPlanId = null;
+        overrides = {};
         $('summary').replaceChildren();
         $('rows').replaceChildren();
         enableApply(false);
@@ -269,8 +313,8 @@
         show('');
         try {
             const result = await api('/api/apply', {
-                planId: currentPlanId
-                // overrides can be added later: { "emailId": "KEEP", ... }
+                planId: currentPlanId,
+                overrides: overrides          // { emailId: "KEEP", ... }
             });
 
             const applied = Object.entries(result.applied || {})
