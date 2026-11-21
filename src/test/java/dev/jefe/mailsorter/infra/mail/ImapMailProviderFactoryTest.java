@@ -4,7 +4,7 @@ import com.icegreen.greenmail.configuration.GreenMailConfiguration;
 import com.icegreen.greenmail.junit5.GreenMailExtension;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
-import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 

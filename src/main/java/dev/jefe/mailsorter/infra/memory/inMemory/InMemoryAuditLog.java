@@ -1,4 +1,4 @@
-package dev.jefe.mailsorter.infra.memory;
+package dev.jefe.mailsorter.infra.memory.inMemory;
 
 import dev.jefe.mailsorter.application.port.out.AuditLog;
 import dev.jefe.mailsorter.domain.Action;

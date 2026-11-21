@@ -1,5 +1,7 @@
 package dev.jefe.mailsorter.domain;
 
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
+
 /**
  * Convenient presets for the most common email providers.
  * All of these use IMAP over SSL/TLS (port 993).

@@ -27,5 +27,9 @@ bin/
 
 # Logs & Local DBs
 *.log
-*.db
+*.log
 logs/
+data/
+*.db
+*.db-wal
+*.db-shm

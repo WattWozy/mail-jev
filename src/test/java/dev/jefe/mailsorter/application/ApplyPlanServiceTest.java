@@ -11,7 +11,7 @@ import dev.jefe.mailsorter.application.service.ClassifyService;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.PolicyEngine;
-import dev.jefe.mailsorter.infra.memory.InMemoryPlanStore;
+import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryPlanStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

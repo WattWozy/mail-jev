@@ -1,13 +1,16 @@
 package dev.jefe.mailsorter.infra.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.jefe.mailsorter.AppConfig;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.Classification;
-import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
+import io.github.cdimascio.dotenv.Dotenv;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,19 @@ class WebServerTest {
 
     @BeforeEach
     void start() throws IOException {
+
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+
+        AppConfig appConfig;
+        try {
+            appConfig = AppConfig.from(dotenv::get);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+
         ConnectUseCase connect = config -> {
             if (connectFailure != null) throw connectFailure;
             connected.add(config);
@@ -61,7 +77,9 @@ class WebServerTest {
             return new ApplyResult(Map.of(), List.of());
         };
 
-        web = new WebServer("127.0.0.1", 0, connect, classify, apply);
+        GetEmailUseCase getEmail = WebServerTest::fakeEmail;
+
+        web = new WebServer("127.0.0.1", 0, connect, classify, apply, getEmail);
         web.start();
     }
 
@@ -74,18 +92,6 @@ class WebServerTest {
                 .POST(HttpRequest.BodyPublishers.ofString(body)).build();
         return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
-
-//    @Test
-//    void connectPassesTheParsedConfigToTheUseCase() throws Exception {
-//        var response = post("/api/connect", """
-//            {"providerType":"imap","host":"mail.example.com","port":993,"ssl"="true",
-//             "username":"me@example.com","secret":"s3cret","options":{"ssl":"false"}}""");
-//
-//        assertThat(response.statusCode()).isEqualTo(200);
-//        assertThat(connected).hasSize(1);
-//        assertThat(connected.get(0).host()).isEqualTo("mail.example.com");
-//        assertThat(connected.get(0).options()).containsEntry("ssl", "true");
-//    }
 
     @Test
     void aFailedConnectionIs502AndNeverEchoesTheSecret() throws Exception {
@@ -137,5 +143,13 @@ class WebServerTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("<title>Mail Sorter</title>");
+    }
+
+    static EmailContent fakeEmail(String emailId) {
+        return new EmailContent(emailId,
+                "From test",
+                "Test subject",
+                "Test date",
+                " : some test body  :");
     }
 }

@@ -1,5 +1,6 @@
 package dev.jefe.mailsorter.domain;
 
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

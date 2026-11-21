@@ -12,6 +12,7 @@ import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Map;
 
 public final class DevMain {
@@ -19,7 +20,8 @@ public final class DevMain {
     public static void main(String[] args) throws Exception {
         var greenMail = new GreenMail(new ServerSetup[] {
                 new ServerSetup(3143, "127.0.0.1", ServerSetup.PROTOCOL_IMAP),
-                new ServerSetup(3025, "127.0.0.1", ServerSetup.PROTOCOL_SMTP)});        greenMail.start();
+                new ServerSetup(3025, "127.0.0.1", ServerSetup.PROTOCOL_SMTP)});
+        greenMail.start();
         GreenMailUser user = greenMail.setUser("me@example.com", "secret");
         seed(greenMail, user);
 
@@ -33,17 +35,24 @@ public final class DevMain {
             System.exit(1);
         }
 
-        var web = CompositionRoot.build(
-                new AppConfig(
-                        "127.0.0.1",
-                        8080,
-                        URI.create(endpoint),
-                        apiKey
-                )
-        );
+        AppConfig config;
+        try {
+            config = AppConfig.from(dotenv::get);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+
+        var web = CompositionRoot.build(config);
         web.start();
 
         System.out.println("UI:    http://127.0.0.1:8080");
+    }
+
+    public static Path dbPath() {
+        return Path.of(System.getenv().getOrDefault("MAILSORTER_DB_PATH", "./data/mailsorter.db"));
     }
 
     private static void seed(GreenMail greenMail, GreenMailUser user) throws Exception {

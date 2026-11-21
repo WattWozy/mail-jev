@@ -1,4 +1,4 @@
-package dev.jefe.mailsorter.infra.memory;
+package dev.jefe.mailsorter.infra.memory.inMemory;
 
 import dev.jefe.mailsorter.application.port.out.ConnectionStore;
 import dev.jefe.mailsorter.application.port.out.MailProvider;

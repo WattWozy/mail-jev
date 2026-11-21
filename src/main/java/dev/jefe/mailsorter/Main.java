@@ -3,23 +3,24 @@ package dev.jefe.mailsorter;
 import io.github.cdimascio.dotenv.Dotenv;
 
 import java.net.URI;
+import java.nio.file.Path;
 
 public final class Main {
     public static void main(String[] args) throws Exception {
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
-        Dotenv dotenv = Dotenv.configure()
-                .ignoreIfMissing()   // don't crash if the file is absent
-                .load();
-
-        String key = dotenv.get("JEV_API_KEY");
-        String endpoint = dotenv.get("JEV_ENDPOINT");
-        if (key == null || endpoint == null) {
-            System.err.println("Set JEV_API_KEY and JEV_ENDPOINT");
+        AppConfig config;
+        try {
+            config = AppConfig.from(dotenv::get);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            System.err.println(e.getMessage());
             System.exit(1);
+            return;
         }
-        int port = Integer.parseInt(System.getenv().getOrDefault("WEB_PORT", "8080"));
-        var web = CompositionRoot.build(new AppConfig("127.0.0.1", port, URI.create(endpoint), key));
+
+        var web = CompositionRoot.build(config);
         web.start();
-        System.out.println("Mail Sorter on http://127.0.0.1:" + port);
+        System.out.println("Mail Sorter on http://" + config.webHost() + ":" + config.webPort()
+                + " (persistence: " + config.persistence() + ")");
     }
 }

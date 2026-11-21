@@ -1,4 +1,4 @@
-package dev.jefe.mailsorter.infra.memory;
+package dev.jefe.mailsorter.infra.memory.sqlite;
 
 import dev.jefe.mailsorter.application.port.in.Plan;
 import dev.jefe.mailsorter.application.port.out.PlanStore;
@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class InMemoryPlanStore implements PlanStore {
+public final class SqlitePlanStore implements PlanStore {
     private final Map<String, Plan> store = new ConcurrentHashMap<>();
 
     @Override

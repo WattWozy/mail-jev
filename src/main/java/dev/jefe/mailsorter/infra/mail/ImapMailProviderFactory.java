@@ -3,7 +3,7 @@ package dev.jefe.mailsorter.infra.mail;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.MailProviderFactory;
-import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 import jakarta.mail.MessagingException;
 import jakarta.mail.Session;

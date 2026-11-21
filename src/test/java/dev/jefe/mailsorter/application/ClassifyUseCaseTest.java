@@ -12,11 +12,10 @@ import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.Email;
 import dev.jefe.mailsorter.domain.PolicyEngine;
-import dev.jefe.mailsorter.infra.memory.InMemoryPlanStore;
+import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryPlanStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
 
 import static dev.jefe.mailsorter.application.Fakes.email;

@@ -4,6 +4,7 @@ import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
 import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.*;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -15,7 +16,13 @@ final class Fakes {
     static Email email(String id) {
         return new Email(id, "sender@example.com", "subject " + id, "snippet", Map.of());
     }
-
+    static EmailContent fakeEmail(String emailId) {
+        return new EmailContent(emailId,
+                "From test",
+                "Test subject",
+                "Test date",
+                " : some test body  :");
+    }
     static final class FakeMailProvider implements MailProvider {
         final List<Email> inbox = new ArrayList<>();
         final List<String> archived = new ArrayList<>();
@@ -41,6 +48,12 @@ final class Fakes {
         }
 
         @Override public String accountId(){ return "you@fakemail.com";};
+
+        @Override
+        public EmailContent read(String emailId) {
+            return fakeEmail(emailId);
+        }
+
         @Override public List<Email> listUnprocessed(int limit) {
             return inbox.stream().filter(e -> !processed.contains(e.id())).limit(limit).toList();
         }

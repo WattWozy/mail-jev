@@ -1,4 +1,4 @@
-package dev.jefe.mailsorter.domain;
+package dev.jefe.mailsorter.domain.config;
 
 import java.util.HashMap;
 import java.util.Map;

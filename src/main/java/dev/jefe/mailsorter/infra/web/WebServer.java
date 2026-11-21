@@ -12,7 +12,7 @@ import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.EmailContent;
-import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 

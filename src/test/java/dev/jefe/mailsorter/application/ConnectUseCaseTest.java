@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.jefe.mailsorter.application.Fakes.*;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.service.ConnectService;
-import dev.jefe.mailsorter.domain.MailboxConfig;
+import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import java.util.Map;
+
+import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryCredentialStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +17,7 @@ class ConnectUseCaseTest {
 
     private FakeMailProviderFactory factory;
     private InMemoryConnectionStore store;
+    private InMemoryCredentialStore credentialStore;
     private ConnectService connect;
 
     private final MailboxConfig config =
@@ -24,7 +27,8 @@ class ConnectUseCaseTest {
     void setUp() {
         factory = new FakeMailProviderFactory();
         store = new InMemoryConnectionStore();
-        connect = new ConnectService(factory, store);
+        credentialStore = new InMemoryCredentialStore();
+        connect = new ConnectService(factory, store, credentialStore);
     }
 
     @Test
