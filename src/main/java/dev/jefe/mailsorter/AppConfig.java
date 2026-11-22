@@ -2,6 +2,7 @@ package dev.jefe.mailsorter;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.function.UnaryOperator;
 
 public record AppConfig(
@@ -10,7 +11,8 @@ public record AppConfig(
         PersistenceMode persistence,
         Path dbPath,
         URI jevEndpoint,
-        String jevApiKey
+        String jevApiKey,
+        byte[] storeSecretKey
 ) {
     public enum PersistenceMode { MEMORY, SQLITE }
 
@@ -21,7 +23,17 @@ public record AppConfig(
                 PersistenceMode.valueOf(orDefault(env, "MAILSORTER_PERSISTENCE", "SQLITE").toUpperCase()),
                 Path.of(orDefault(env, "MAILSORTER_DB_PATH", "./data/mailsorter.db")),
                 URI.create(required(env, "JEV_ENDPOINT")),
-                required(env, "JEV_API_KEY"));
+                required(env, "JEV_API_KEY"),
+                getSecretInBytes(env));
+    }
+
+    private static byte[] getSecretInBytes(UnaryOperator<String> env){
+        String secretString = required(env, "STORE_SECRET_KEY");
+        byte[] secretBytes = Base64.getDecoder().decode(secretString.trim());
+        if (secretBytes.length != 32) {
+            throw new IllegalStateException("STORE_SECRET_KEY must be 32 bytes, Base64-encoded");
+        }
+        return secretBytes;
     }
 
     private static String required(UnaryOperator<String> env, String key) {

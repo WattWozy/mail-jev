@@ -1,7 +1,7 @@
 package dev.jefe.mailsorter.application;
 
 import dev.jefe.mailsorter.application.Fakes.FakeClassifier;
-import dev.jefe.mailsorter.application.Fakes.FakeMailProvider;
+
 import dev.jefe.mailsorter.application.Fakes.InMemoryConnectionStore;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
@@ -13,6 +13,7 @@ import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.Email;
 import dev.jefe.mailsorter.domain.PolicyEngine;
 import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryPlanStore;
+import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

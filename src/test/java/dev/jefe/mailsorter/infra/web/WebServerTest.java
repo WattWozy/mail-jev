@@ -5,11 +5,11 @@ import dev.jefe.mailsorter.AppConfig;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.*;
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Classification;
-import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.application.port.out.*;
+import dev.jefe.mailsorter.application.service.AccountService;
+import dev.jefe.mailsorter.domain.*;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
+
 import io.github.cdimascio.dotenv.Dotenv;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,28 +20,27 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 
 class WebServerTest {
 
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newHttpClient();
-    private final List<MailboxConfig> connected = new ArrayList<>();
+
+    // recorded by the test doubles
+    private final List<MailboxConfig> connected = new CopyOnWriteArrayList<>();
     private final List<ClassifyCommand> commands = new ArrayList<>();
+
     private volatile RuntimeException connectFailure;
     private volatile RuntimeException classifyFailure;
     private WebServer web;
 
     @BeforeEach
     void start() throws IOException {
-
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
-
         AppConfig appConfig;
         try {
             appConfig = AppConfig.from(dotenv::get);
@@ -51,16 +50,60 @@ class WebServerTest {
             return;
         }
 
-
-        ConnectUseCase connect = config -> {
+        // ── test doubles for AccountService ────────────────────────────────
+        MailProviderFactory factory = config -> {
             if (connectFailure != null) throw connectFailure;
             connected.add(config);
+
+            String id = serviceKey(config) + "|" + config.username();   // same scheme as AccountService
+
+            return new MailProvider() {
+                @Override public String accountId()                         { return id; }
+
+                @Override
+                public void close() {
+
+                }
+
+                @Override public EmailContent read(String emailId)          { return null; }
+                @Override public List<Email> listUnprocessed(int limit)     { return List.of(); }
+                @Override public Set<String> applyAll(List<MailOperation> ops, String reviewLabel) {
+                    return Set.of();
+                }
+                @Override public void markProcessed(String emailId)         {}
+                @Override public void archive(String emailId)               {}
+                @Override public void moveToTrash(String emailId)           {}
+                @Override public void restoreToInbox(String emailId)        {}
+                @Override public void addLabel(String emailId, String label){}
+                @Override public void removeLabel(String emailId, String label) {}
+            };
         };
 
+        ConnectionStore connectionStore = new ConnectionStore() {
+            private MailProvider current;
+            @Override public void save(MailProvider provider) { this.current = provider; }
+            @Override public Optional<MailProvider> current() { return Optional.ofNullable(current); }
+        };
+
+        CredentialStore credentialStore = new CredentialStore() {
+            private final List<StoredCredential> store = new ArrayList<>();
+            @Override public void save(String service, String username, String secret) {
+                store.removeIf(c -> c.service().equals(service) && c.credential().username().equals(username));
+                store.add(new StoredCredential(service, new Credential(username, secret)));
+            }
+            @Override public Optional<Credential> find(String service) { return Optional.empty(); }
+            @Override public List<StoredCredential> findAll() { return List.copyOf(store); }
+            @Override public void delete(String service, String username) {
+                store.removeIf(c -> c.service().equals(service) && c.credential().username().equals(username));
+            }
+        };
+
+        AccountService accountService = new AccountService(factory, connectionStore, credentialStore);
+
+        // ── other use-cases stay as simple fakes ───────────────────────────
         ClassifyUseCase classify = command -> {
             if (classifyFailure != null) throw classifyFailure;
             commands.add(command);
-
             var entry = new Plan.Entry(
                     "<1@t>",
                     "offers@shop.com",
@@ -71,27 +114,35 @@ class WebServerTest {
             return new Plan("test-plan-id", List.of(entry));
         };
 
-        // simple no-op apply for the web tests (or capture calls if you want)
-        ApplyPlanUseCase apply = command -> {
-            // you can collect the command here if the tests assert on it
-            return new ApplyResult(Map.of(), List.of());
-        };
-
+        ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
         GetEmailUseCase getEmail = WebServerTest::fakeEmail;
 
-        web = new WebServer("127.0.0.1", 0, connect, classify, apply, getEmail);
+        web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail);
         web.start();
     }
 
     @AfterEach
-    void stop() { web.close(); }
+    void stop() {
+        web.close();
+    }
 
     private HttpResponse<String> post(String path, String body) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + path))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
         return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
+
+    private static String serviceKey(MailboxConfig config) {
+        return switch (config.providerType().toLowerCase()) {
+            case "gmx", "gmail", "outlook", "yahoo", "icloud" ->
+                    config.providerType().toLowerCase();
+            default -> "imap:" + config.host();
+        };
+    }
+
+    // ── existing tests (unchanged assertions) ──────────────────────────────
 
     @Test
     void aFailedConnectionIs502AndNeverEchoesTheSecret() throws Exception {
@@ -102,6 +153,7 @@ class WebServerTest {
 
         assertThat(response.statusCode()).isEqualTo(502);
         assertThat(response.body()).contains("authentication failed").doesNotContain("s3cret");
+        assertThat(connected).isEmpty();          // factory never succeeded
     }
 
     @Test
@@ -138,18 +190,9 @@ class WebServerTest {
     @Test
     void servesTheUiAtTheRoot() throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + "/")).build();
-
         var response = http.send(request, HttpResponse.BodyHandlers.ofString());
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("<title>Mail Sorter</title>");
-    }
-
-    static EmailContent fakeEmail(String emailId) {
-        return new EmailContent(emailId,
-                "From test",
-                "Test subject",
-                "Test date",
-                " : some test body  :");
     }
 }

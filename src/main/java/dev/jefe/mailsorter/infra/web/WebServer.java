@@ -10,6 +10,7 @@ import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
+import dev.jefe.mailsorter.application.service.AccountService;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.EmailContent;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
@@ -31,7 +32,7 @@ public final class WebServer implements AutoCloseable {
     private record Response(int status, Object body) {}
 
     private final HttpServer server;
-    private final ConnectUseCase connect;
+    private final ConnectUseCase accountService;
     private final ClassifyUseCase classify;
     private final ApplyPlanUseCase apply;
     private final GetEmailUseCase getEmail;
@@ -42,7 +43,7 @@ public final class WebServer implements AutoCloseable {
                      ClassifyUseCase classify,
                      ApplyPlanUseCase apply,
                      GetEmailUseCase getEmail) throws IOException {
-        this.connect = connect;
+        this.accountService = connect;
         this.classify = classify;
         this.apply = apply;
         this.getEmail = getEmail;
@@ -80,7 +81,7 @@ public final class WebServer implements AutoCloseable {
                             .build();
         };
 
-        connect.execute(config);
+        accountService.execute(config);
         return new Response(200, Map.of("connected", true));
     }
 

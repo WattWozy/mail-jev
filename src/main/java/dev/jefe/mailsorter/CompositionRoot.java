@@ -3,15 +3,16 @@ package dev.jefe.mailsorter;
 import dev.jefe.mailsorter.application.port.out.AuditLog;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.port.out.CredentialStore;
+import dev.jefe.mailsorter.application.service.AccountService;
 import dev.jefe.mailsorter.application.service.ApplyPlanService;
 import dev.jefe.mailsorter.application.service.ClassifyService;
-import dev.jefe.mailsorter.application.service.ConnectService;
 import dev.jefe.mailsorter.application.service.GetEmailService;
 import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
 import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.PolicyEngine;
+import dev.jefe.mailsorter.infra.crypto.AesGcmSecretCipher;
 import dev.jefe.mailsorter.infra.jev.JevClassifier;
 import dev.jefe.mailsorter.infra.jev.JevClient;
 import dev.jefe.mailsorter.infra.jev.JevConfig;
@@ -39,17 +40,29 @@ public final class CompositionRoot {
         //inject depending on the profile (sql/inmem)
         AuditLog auditLog;
         CredentialStore credentialStore;
+        AccountService accountService;
+
+        var store = new InMemoryConnectionStore();
+        var cipher = new AesGcmSecretCipher(config.storeSecretKey());
+
         if (config.persistence() == AppConfig.PersistenceMode.SQLITE) {
             var db = new SqliteDatabase(config.dbPath());
             db.migrate();
             auditLog = new SqliteAuditLog(db);
-            credentialStore = new SqliteCredentialStore(db);
-
+            credentialStore = new SqliteCredentialStore(db, cipher);
+            accountService = new AccountService(
+                    new ImapMailProviderFactory(),
+                    store,
+                    credentialStore);
         } else {
             auditLog = new InMemoryAuditLog();
             credentialStore = new InMemoryCredentialStore();
+            accountService = new AccountService(
+                    new ImapMailProviderFactory(),
+                    store,
+                    credentialStore);
         }
-        var store = new InMemoryConnectionStore();
+
         var planStore = new InMemoryPlanStore();
 
         var jev = new JevClassifier(
@@ -66,7 +79,7 @@ public final class CompositionRoot {
         return new WebServer(
                 config.webHost(),
                 config.webPort(),
-                new ConnectService(new ImapMailProviderFactory(), store, credentialStore),
+                accountService,
                 new ClassifyService(store, classifier, policy, planStore),
                 new ApplyPlanService(store, planStore, auditLog),
                 new GetEmailService(store)

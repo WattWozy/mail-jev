@@ -65,6 +65,15 @@ public final class ImapMailProvider implements MailProvider {
     }
 
     @Override
+    public void close() {
+        try {
+            store.close();
+        } catch (MessagingException e) {
+            AppLog.error(ImapMailProvider.class, "Could not close IMAP store", e);
+        }
+    }
+
+    @Override
     public EmailContent read(String emailId) {
         try {
             for (String folderName : List.of(INBOX, archiveFolder, trashFolder)) {

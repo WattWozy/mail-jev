@@ -2,9 +2,6 @@ package dev.jefe.mailsorter;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
-import java.net.URI;
-import java.nio.file.Path;
-
 public final class Main {
     public static void main(String[] args) throws Exception {
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
