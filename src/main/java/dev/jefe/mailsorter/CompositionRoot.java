@@ -80,6 +80,7 @@ public final class CompositionRoot {
                 config.webHost(),
                 config.webPort(),
                 accountService,
+                accountService,
                 new ClassifyService(store, classifier, policy, planStore),
                 new ApplyPlanService(store, planStore, auditLog),
                 new GetEmailService(store)

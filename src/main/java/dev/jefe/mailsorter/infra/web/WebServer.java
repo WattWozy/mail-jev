@@ -6,11 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import dev.jefe.mailsorter.application.exception.AccountNotFoundException;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
-import dev.jefe.mailsorter.application.service.AccountService;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.EmailContent;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public final class WebServer implements AutoCloseable {
@@ -32,7 +33,8 @@ public final class WebServer implements AutoCloseable {
     private record Response(int status, Object body) {}
 
     private final HttpServer server;
-    private final ConnectUseCase accountService;
+    private final ConnectUseCase connectService;
+    private final ListAccountsUseCase listAccounts;
     private final ClassifyUseCase classify;
     private final ApplyPlanUseCase apply;
     private final GetEmailUseCase getEmail;
@@ -40,15 +42,19 @@ public final class WebServer implements AutoCloseable {
 
     public WebServer(String host, int port,
                      ConnectUseCase connect,
+                     ListAccountsUseCase listAccounts,
                      ClassifyUseCase classify,
                      ApplyPlanUseCase apply,
                      GetEmailUseCase getEmail) throws IOException {
-        this.accountService = connect;
+        this.connectService = connect;
+        this.listAccounts = listAccounts;
         this.classify = classify;
         this.apply = apply;
         this.getEmail = getEmail;
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/api/connect", post(this::handleConnect));
+        server.createContext("/api/accounts", get(this::handleListAccounts));
+        server.createContext("/api/accounts/connect", post(this::handleConnectSaved));
         server.createContext("/api/classify", post(this::handleClassify));
         server.createContext("/api/apply", post(this::handleApply));
         server.createContext("/api/email", post(this::handleEmail));
@@ -58,6 +64,21 @@ public final class WebServer implements AutoCloseable {
     public void start() { server.start(); }
     public int port() { return server.getAddress().getPort(); }
     @Override public void close() { server.stop(0); }
+
+    // GET /accounts
+    private Response handleListAccounts() {
+        return new Response(200, listAccounts.list());       // id, service, username, status: never a secret
+    }
+
+    private Response handleConnectSaved(JsonNode body) {
+        try {
+            listAccounts.connectSaved(body.path("id").asText(""));
+            return new Response(200, Map.of("connected", true));
+        } catch (AccountNotFoundException e) {
+            return new Response(404, Map.of("error", "Unknown account"));
+        }
+        // ConnectionFailedException → 502, through the same mapping your /connect handler already uses
+    }
 
     private Response handleConnect(JsonNode body) {
         String provider = body.path("provider").asText("").toLowerCase();
@@ -81,7 +102,7 @@ public final class WebServer implements AutoCloseable {
                             .build();
         };
 
-        accountService.execute(config);
+        connectService.execute(config);
         return new Response(200, Map.of("connected", true));
     }
 
@@ -177,6 +198,19 @@ public final class WebServer implements AutoCloseable {
         );
     }
 
+    private HttpHandler get(Supplier<Response> logic) {
+        return exchange -> {
+            try (exchange) {
+                if (!"GET".equals(exchange.getRequestMethod())) {
+                    send(exchange, 405, "application/json", write(Map.of("error", "GET only")));
+                    return;
+                }
+                Response response = guarded(logic);
+                send(exchange, response.status(), "application/json", write(response.body()));
+            }
+        };
+    }
+
     private HttpHandler post(Function<JsonNode, Response> logic) {
         return exchange -> {
             try (exchange) {
@@ -186,23 +220,33 @@ public final class WebServer implements AutoCloseable {
                 }
                 Response response;
                 try {
-                    response = logic.apply(json.readTree(exchange.getRequestBody()));
-                } catch (IllegalArgumentException | JsonProcessingException e) {
+                    JsonNode body = json.readTree(exchange.getRequestBody());
+                    response = guarded(() -> logic.apply(body));
+                } catch (JsonProcessingException e) {
                     response = new Response(400, Map.of("error", String.valueOf(e.getMessage())));
-                } catch (NotConnectedException e) {
-                    response = new Response(409, Map.of("error", e.getMessage()));
-                } catch (PlanNotFoundException e) {
-                    response = new Response(404, Map.of("error", e.getMessage()));
-                } catch (ConnectionFailedException e) {
-                    AppLog.error(WebServer.class, e.getMessage(), e);
-                    response = new Response(502, Map.of("error", e.getMessage()));
-                } catch (RuntimeException e) {
-                    AppLog.error(WebServer.class, e.getMessage(), e);
-                    response = new Response(500, Map.of("error", "internal error"));
                 }
                 send(exchange, response.status(), "application/json", write(response.body()));
             }
         };
+    }
+
+    /** One place that turns exceptions into HTTP statuses, for both GET and POST. */
+    private Response guarded(Supplier<Response> logic) {
+        try {
+            return logic.get();
+        } catch (IllegalArgumentException e) {
+            return new Response(400, Map.of("error", String.valueOf(e.getMessage())));
+        } catch (NotConnectedException e) {
+            return new Response(409, Map.of("error", e.getMessage()));
+        } catch (PlanNotFoundException | AccountNotFoundException e) {
+            return new Response(404, Map.of("error", e.getMessage()));
+        } catch (ConnectionFailedException e) {
+            AppLog.error(WebServer.class, e.getMessage(), e);
+            return new Response(502, Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            AppLog.error(WebServer.class, e.getMessage(), e);
+            return new Response(500, Map.of("error", "internal error"));
+        }
     }
 
     private void serveUi(HttpExchange exchange) throws IOException {

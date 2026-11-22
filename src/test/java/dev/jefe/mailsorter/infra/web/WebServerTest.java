@@ -117,7 +117,7 @@ class WebServerTest {
         ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
         GetEmailUseCase getEmail = WebServerTest::fakeEmail;
 
-        web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail);
+        web = new WebServer("127.0.0.1", 0, accountService, accountService, classify, apply, getEmail);
         web.start();
     }
 

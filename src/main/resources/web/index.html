@@ -162,6 +162,7 @@
 
 <fieldset>
     <legend>2. Plan &amp; Apply</legend>
+    <select id="account">Saved profiles</select>
     <label>Batch size <input id="limit" type="number" value="25" size="4"></label>
     <button id="preview-btn" disabled>Preview (creates a plan)</button>
     <button id="apply" disabled>Apply plan to mailbox</button>
@@ -296,6 +297,98 @@
         });
         renderSummary(counts);
     }
+
+    async function loadAccounts() {
+        try {
+            console.log('Loading accounts...');
+
+            const response = await fetch('/api/accounts');
+
+            if (!response.ok) {
+                throw new Error(`Failed to load accounts: ${response.status}`);
+            }
+
+            const accounts = await response.json();
+            console.log('Accounts:', accounts);
+
+            const sel = document.getElementById('account');
+            sel.replaceChildren();
+
+            if (!accounts.some(a => a.status === 'ACTIVE')) {
+                const placeholder = new Option('Select an account…', '', true, true);
+                placeholder.disabled = true;
+                sel.add(placeholder);
+            }
+
+            for (const account of accounts) {
+                sel.add(new Option(
+                    `${account.username} (${account.service})`,
+                    account.id,
+                    false,
+                    account.status === 'ACTIVE'
+                ));
+            }
+
+            sel.add(new Option('+ Add account…', '__new__'));
+
+            if (accounts.length === 0) {
+                show('Use the connection form above to add an account.');
+            }
+
+        } catch (error) {
+            console.error('Account loading failed:', error);
+            show(error.message, true);
+        }
+    }
+
+
+    // ── Account selection ───────────────────────────────
+
+    document.getElementById('account').addEventListener('change', async (e) => {
+        const accountId = e.target.value;
+
+        if (accountId === '__new__') {
+            show('Use the connection form above to add an account.');
+            return;
+        }
+
+        if (!accountId) return;
+
+        clearPlan();
+        enablePreview(false);
+
+        try {
+            setLoading(true, 'Connecting account…');
+            show('');
+
+            const response = await fetch('/api/accounts/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: accountId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || `Connection failed: ${response.status}`);
+            }
+
+            await loadAccounts();
+            enablePreview(true);
+            show('Connected.');
+
+        } catch (error) {
+            console.error('Account connection failed:', error);
+            show(error.message, true);
+
+        } finally {
+            setLoading(false);
+        }
+    });
+
+
+    // ── Initial load ────────────────────────────────────
+
+    loadAccounts();
 
     // ── Preview helpers ─────────────────────────────────
 
@@ -470,6 +563,7 @@
                 body.ssl  = String($('ssl').checked);
             }
             await api('/api/connect', body);
+            await loadAccounts();
             show('Connected.');
             enablePreview(true);
         } catch (e) {
