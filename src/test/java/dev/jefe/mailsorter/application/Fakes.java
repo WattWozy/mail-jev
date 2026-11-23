@@ -1,17 +1,12 @@
 package dev.jefe.mailsorter.application;
 
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
-import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.domain.*;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
-import dev.jefe.mailsorter.infra.logging.AppLog;
-import dev.jefe.mailsorter.infra.mail.ImapMailProvider;
-import jakarta.mail.MessagingException;
+import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 /** In-memory test doubles for the driven ports. */
 public final class Fakes {

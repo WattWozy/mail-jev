@@ -12,26 +12,25 @@ import java.util.stream.Collectors;
 
 import static dev.jefe.mailsorter.application.Fakes.fakeEmail;
 
-
 public class FakeMailProvider implements MailProvider {
-    final List<Email> inbox = new ArrayList<>();
-    final List<String> archived = new ArrayList<>();
-    final List<String> trashed = new ArrayList<>();
-    final List<String> processed = new ArrayList<>();
-    final List<String> restored = new ArrayList<>();
-    final Map<String, List<String>> labels = new HashMap<>();
-    final Set<String> failOn = new HashSet<>();
-    final Set<String> failing = new HashSet<>();
-    final List<List<MailOperation>> applyCalls = new ArrayList<>();
+    public final List<Email> inbox = new ArrayList<>();
+    public final List<String> archived = new ArrayList<>();
+    public final List<String> trashed = new ArrayList<>();
+    public final List<String> processed = new ArrayList<>();
+    public final List<String> restored = new ArrayList<>();
+    public final Map<String, List<String>> labels = new HashMap<>();
+    public final Set<String> failOn = new HashSet<>();
+    public final Set<String> failing = new HashSet<>();
+    public final List<List<MailOperation>> applyCalls = new ArrayList<>();
 
-    final AtomicInteger closeCalls = new AtomicInteger();
-    volatile RuntimeException closeFailure;
+    public final AtomicInteger closeCalls = new AtomicInteger();
+    public volatile RuntimeException closeFailure;
 
-    void withEmails(Email... emails) {
+    public void withEmails(Email... emails) {
         inbox.addAll(List.of(emails));
     }
 
-    FakeMailProvider failingOn(String... ids) {
+    public FakeMailProvider failingOn(String... ids) {
         failing.addAll(List.of(ids));
         return this;
     }
@@ -42,7 +41,7 @@ public class FakeMailProvider implements MailProvider {
         }
     }
 
-    boolean isClosed() {
+    public boolean isClosed() {
         return closeCalls.get() > 0;
     }
 
@@ -56,8 +55,6 @@ public class FakeMailProvider implements MailProvider {
     public String accountId() {
         return "you@fakemail.com";
     }
-
-    ;
 
     @Override
     public EmailContent read(String emailId) {

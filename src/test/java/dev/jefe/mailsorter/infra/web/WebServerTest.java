@@ -2,6 +2,7 @@ package dev.jefe.mailsorter.infra.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jefe.mailsorter.AppConfig;
+import dev.jefe.mailsorter.application.Fakes;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.*;
@@ -115,7 +116,7 @@ class WebServerTest {
         };
 
         ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
-        GetEmailUseCase getEmail = WebServerTest::fakeEmail;
+        GetEmailUseCase getEmail = Fakes::fakeEmail;
 
         web = new WebServer("127.0.0.1", 0, accountService, accountService, classify, apply, getEmail);
         web.start();
