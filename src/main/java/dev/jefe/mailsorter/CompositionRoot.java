@@ -3,11 +3,10 @@ package dev.jefe.mailsorter;
 import dev.jefe.mailsorter.application.port.out.AuditLog;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.port.out.CredentialStore;
-import dev.jefe.mailsorter.application.service.AccountService;
-import dev.jefe.mailsorter.application.service.ApplyPlanService;
-import dev.jefe.mailsorter.application.service.ClassifyService;
-import dev.jefe.mailsorter.application.service.GetEmailService;
+import dev.jefe.mailsorter.application.port.out.RuleRepository;
+import dev.jefe.mailsorter.application.service.*;
 import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
+import dev.jefe.mailsorter.application.service.prefilter.Rule;
 import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule;
 import dev.jefe.mailsorter.domain.Action;
 import dev.jefe.mailsorter.domain.Category;
@@ -17,17 +16,16 @@ import dev.jefe.mailsorter.infra.jev.JevClassifier;
 import dev.jefe.mailsorter.infra.jev.JevClient;
 import dev.jefe.mailsorter.infra.jev.JevConfig;
 import dev.jefe.mailsorter.infra.mail.ImapMailProviderFactory;
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryAuditLog;
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryConnectionStore;
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryCredentialStore;
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryPlanStore;
+import dev.jefe.mailsorter.infra.memory.inMemory.*;
 import dev.jefe.mailsorter.infra.memory.sqlite.SqliteAuditLog;
 import dev.jefe.mailsorter.infra.memory.sqlite.SqliteCredentialStore;
+import dev.jefe.mailsorter.infra.memory.sqlite.SqliteRuleStore;
 import dev.jefe.mailsorter.infra.sqlite.SqliteDatabase;
 import dev.jefe.mailsorter.infra.web.WebServer;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +38,7 @@ public final class CompositionRoot {
         //inject depending on the profile (sql/inmem)
         AuditLog auditLog;
         CredentialStore credentialStore;
+        RuleRepository ruleRepository;
         AccountService accountService;
 
         var store = new InMemoryConnectionStore();
@@ -54,6 +53,7 @@ public final class CompositionRoot {
                     new ImapMailProviderFactory(),
                     store,
                     credentialStore);
+            ruleRepository = new SqliteRuleStore(db);
         } else {
             auditLog = new InMemoryAuditLog();
             credentialStore = new InMemoryCredentialStore();
@@ -61,14 +61,29 @@ public final class CompositionRoot {
                     new ImapMailProviderFactory(),
                     store,
                     credentialStore);
+            ruleRepository = new InMemoryRuleStore();
         }
 
         var planStore = new InMemoryPlanStore();
 
+        List<Rule> builtinRules = List.of(new InvoiceSignalRule()); // + List-Unsubscribe rule when ready
+
         var jev = new JevClassifier(
-                new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))), 500);
-        // order matters: the invoice signal must come before List-Unsubscribe
-        Classifier classifier = new PreFilteringClassifier(jev, List.of(new InvoiceSignalRule()));
+                new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))),
+                500);
+
+        var preFilteringClassifier = new PreFilteringClassifier(jev, builtinRules);
+        Classifier classifier = preFilteringClassifier;
+
+        var ruleService = new RuleService(ruleRepository, userRules -> {
+            List<Rule> combined = new ArrayList<>(builtinRules.size() + userRules.size());
+            combined.addAll(builtinRules);
+            combined.addAll(userRules);
+            preFilteringClassifier.replaceRules(combined);
+        });
+
+        // Load persisted SQLite rules immediately on startup
+        ruleService.reload();
 
         var policy = new PolicyEngine(Map.of(
                 Category.NEWSLETTER, Action.ARCHIVE,
@@ -80,10 +95,10 @@ public final class CompositionRoot {
                 config.webHost(),
                 config.webPort(),
                 accountService,
-                accountService,
                 new ClassifyService(store, classifier, policy, planStore),
                 new ApplyPlanService(store, planStore, auditLog),
-                new GetEmailService(store)
+                new GetEmailService(store),
+                ruleService
         );
     }
 }

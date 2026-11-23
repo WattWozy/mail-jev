@@ -11,7 +11,11 @@ import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
+import dev.jefe.mailsorter.application.service.AccountService;
+import dev.jefe.mailsorter.application.service.RuleService;
+import dev.jefe.mailsorter.application.service.prefilter.rules.RuleField;
 import dev.jefe.mailsorter.domain.Action;
+import dev.jefe.mailsorter.domain.Category;
 import dev.jefe.mailsorter.domain.EmailContent;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import dev.jefe.mailsorter.domain.WellKnownEmailProviders;
@@ -38,23 +42,32 @@ public final class WebServer implements AutoCloseable {
     private final ClassifyUseCase classify;
     private final ApplyPlanUseCase apply;
     private final GetEmailUseCase getEmail;
+    private final ListRulesUseCase listRules;
+    private final AddRuleUseCase addRule;
+    private final DeleteRuleUseCase deleteRule;
     private final ObjectMapper json = new ObjectMapper();
 
     public WebServer(String host, int port,
-                     ConnectUseCase connect,
-                     ListAccountsUseCase listAccounts,
+                     AccountService accountService,
                      ClassifyUseCase classify,
                      ApplyPlanUseCase apply,
-                     GetEmailUseCase getEmail) throws IOException {
-        this.connectService = connect;
-        this.listAccounts = listAccounts;
+                     GetEmailUseCase getEmail,
+                     RuleService ruleService) throws IOException {
+        this.connectService = accountService;
+        this.listAccounts = accountService;
         this.classify = classify;
         this.apply = apply;
         this.getEmail = getEmail;
+        this.listRules = ruleService;
+        this.addRule = ruleService;
+        this.deleteRule = ruleService;
+
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/api/connect", post(this::handleConnect));
         server.createContext("/api/accounts", get(this::handleListAccounts));
         server.createContext("/api/accounts/connect", post(this::handleConnectSaved));
+        server.createContext("/api/rules", this::handleRules); // GET list, DELETE /{id}
+        server.createContext("/api/rules/add", post(this::handleAddRule));
         server.createContext("/api/classify", post(this::handleClassify));
         server.createContext("/api/apply", post(this::handleApply));
         server.createContext("/api/email", post(this::handleEmail));
@@ -104,6 +117,86 @@ public final class WebServer implements AutoCloseable {
 
         connectService.execute(config);
         return new Response(200, Map.of("connected", true));
+    }
+
+    private void handleRules(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath(); // e.g. "/api/rules" or "/api/rules/12"
+
+            if ("GET".equals(method) && "/api/rules".equals(path)) {
+                Response r = guarded(() -> new Response(200, listRules.execute()));
+                send(exchange, r.status(), "application/json", write(r.body()));
+                return;
+            }
+
+            if ("POST".equals(method) && "/api/rules".equals(path)) {
+                Response r;
+                try {
+                    JsonNode body = json.readTree(exchange.getRequestBody());
+                    r = guarded(() -> handleAddRule(body));
+                } catch (JsonProcessingException e) {
+                    r = new Response(400, Map.of("error", String.valueOf(e.getMessage())));
+                }
+                send(exchange, r.status(), "application/json", write(r.body()));
+                return;
+            }
+
+            if ("DELETE".equals(method) && path.startsWith("/api/rules/")) {
+                String rawId = path.substring("/api/rules/".length());
+                Response r = guarded(() -> {
+                    if (rawId.isBlank()) {
+                        throw new IllegalArgumentException("rule id is required");
+                    }
+                    deleteRule.execute(rawId);
+                    return new Response(200, Map.of("deleted", true, "id", rawId));
+                });
+                send(exchange, r.status(), "application/json", write(r.body()));
+                return;
+            }
+
+            send(exchange, 405, "application/json", write(Map.of("error", "Method not allowed")));
+        }
+    }
+
+    private Response handleAddRule(JsonNode body) {
+        String fieldRaw = body.path("field").asText("").trim();
+        String pattern = body.path("pattern").asText("").trim();
+        String actionRaw = body.path("action").asText("").trim();
+        String categoryRaw = body.path("category").asText("").trim();
+
+        if (fieldRaw.isEmpty()) throw new IllegalArgumentException("field is required");
+        if (pattern.isEmpty()) throw new IllegalArgumentException("pattern is required");
+
+        RuleField field;
+        try {
+            field = RuleField.valueOf(fieldRaw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("invalid field: " + fieldRaw);
+        }
+
+        Action action;
+        try {
+            action = Action.valueOf(actionRaw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("invalid action: " + actionRaw);
+        }
+
+        Category category = parseCategory(categoryRaw);
+
+        var created = addRule.execute(new AddRuleCommand(field, pattern, action, category));
+        return new Response(201, created);
+    }
+
+    private static Category parseCategory(String raw) {
+        if (raw.isEmpty() || "Rule".equalsIgnoreCase(raw)) {
+            return Category.OTHER; // swap to whichever Category constant represents uncategorized/rule
+        }
+        try {
+            return Category.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return Category.OTHER;
+        }
     }
 
     /** Always produces a plan – never mutates the mailbox. */

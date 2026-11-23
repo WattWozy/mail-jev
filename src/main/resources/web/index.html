@@ -14,11 +14,63 @@
             background: #181a1d;
             color: #d4d7dd;
         }
-        fieldset {
+        header.top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: .75rem;
+            margin-bottom: 1rem;
+        }
+        header.top-bar h1 {
+            margin: 0;
+        }
+        .stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .85rem;
+            font-size: .88rem;
+            color: #9ea4b0;
+        }
+        .stats-bar strong {
+            color: #e2e5eb;
+            font-weight: 600;
+        }
+        fieldset, details.rules-panel {
             margin-bottom: 1rem;
             border: 1px solid #30343b;
             border-radius: 6px;
             background: #1e2126;
+        }
+        details.rules-panel {
+            padding: .5rem .85rem .75rem;
+        }
+        details.rules-panel summary {
+            cursor: pointer;
+            color: #9ea4b0;
+            font-size: .92rem;
+            user-select: none;
+        }
+        details.rules-panel[open] summary {
+            margin-bottom: .65rem;
+            color: #d4d7dd;
+        }
+        .rule-form {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .4rem;
+            margin-bottom: .65rem;
+        }
+        .rules-list {
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .rules-list table {
+            font-size: .84rem;
+        }
+        .rules-list td, .rules-list th {
+            padding: .3rem .4rem;
         }
         legend { color: #9ea4b0; }
         label { display: inline-block; margin: .25rem .75rem .25rem 0; }
@@ -32,11 +84,59 @@
         button { cursor: pointer; }
         button:hover:not(:disabled) { background: #2f343d; border-color: #4c5360; }
         button:disabled { opacity: .55; cursor: not-allowed; }
-        table { border-collapse: collapse; width: 100%; }
-        td, th { border-bottom: 1px solid #2b2f36; padding: .4rem; text-align: left; font-size: .9rem; }
-        th { color: #9ea4b0; }
-        tr:hover td { background: #1e2126; }
-        tr.selected td { background: #252a33; }
+        button.active-mode {
+            background: #1f7a63;
+            border-color: #2a9d80;
+            color: #f4f6f8;
+        }
+        button.btn-sm {
+            padding: .15rem .4rem;
+            font-size: .78rem;
+        }
+
+        .mode-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .6rem;
+            margin-top: .55rem;
+            padding-top: .55rem;
+            border-top: 1px solid #2b2f36;
+        }
+        .autopilot-status {
+            font-size: .85rem;
+            color: #9ea4b0;
+            margin-left: auto;
+        }
+        .autopilot-status.live {
+            color: #4ade80;
+        }
+
+        table.main-table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+        }
+        table.main-table th,
+        table.main-table td {
+            border-bottom: 1px solid #2b2f36;
+            padding: .42rem .45rem;
+            text-align: left;
+            font-size: .9rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        table.main-table th { color: #9ea4b0; }
+        table.main-table tr:hover td { background: #1e2126; }
+        table.main-table tr.selected td { background: #252a33; }
+
+        .col-action  { width: 135px; }
+        .col-from    { width: 195px; }
+        .col-subject { width: 25%; }
+        .col-cat     { width: 120px; }
+        .col-reason  { width: auto; }
+
         .badge {
             padding: .1rem .55rem;
             border-radius: .7rem;
@@ -45,12 +145,32 @@
             white-space: nowrap;
             cursor: pointer;
             user-select: none;
+            display: inline-block;
         }
         .badge:hover { filter: brightness(1.15); }
         .badge.locked { cursor: not-allowed; opacity: .6; }
         .badge.locked:hover { filter: none; }
+        .badge.static-badge { cursor: default; }
+        .badge.static-badge:hover { filter: none; }
         .ARCHIVE { background: #1f7a63; } .MOVE_TO_TRASH { background: #b83b32; }
         .KEEP { background: #4a5565; } .FLAG_FOR_REVIEW { background: #b87408; }
+
+        .src-tag {
+            display: inline-block;
+            font-size: .72rem;
+            padding: .05rem .35rem;
+            border-radius: 3px;
+            background: #252930;
+            border: 1px solid #3a3f48;
+            color: #9ea4b0;
+            margin-right: .35rem;
+            vertical-align: middle;
+        }
+        .src-tag.rule {
+            color: #6b9fff;
+            border-color: #364a70;
+        }
+
         .err { color: #f26d6d; }
         .ok  { color: #4ade80; }
         #summary span { margin-right: 1rem; }
@@ -77,7 +197,12 @@
 
         /* Expanded row that hosts the preview */
         #rows tr.detail-row:hover td,
-        #rows tr.detail-row td { padding: 0; background: #1e2126; }
+        #rows tr.detail-row td {
+            padding: 0;
+            background: #1e2126;
+            white-space: normal;
+            overflow: visible;
+        }
 
         /* ── Email preview ─────────────────────────────── */
         #preview {
@@ -102,9 +227,14 @@
         #preview-meta .from { font-weight: 600; color: #e2e5eb; margin-bottom: .2rem; }
         #preview-meta .subject { color: #c5cad3; margin-bottom: .15rem; }
         #preview-meta .date { font-size: .8rem; color: #9ea4b0; }
-        #preview-close {
+        #preview-actions {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
             flex-shrink: 0;
-            font-size: 1.1rem;
+        }
+        #preview-close {
+            font-size: 1.05rem;
             line-height: 1;
             padding: .25rem .55rem;
         }
@@ -135,7 +265,15 @@
     </style>
 </head>
 <body>
-<h1>Mail Sorter</h1>
+<header class="top-bar">
+    <h1>Mail Sorter</h1>
+    <div class="stats-bar" id="stats-bar">
+        <span>Sorted: <strong id="stat-total">0</strong></span>
+        <span>Rule hits: <strong id="stat-rule-pct">0%</strong></span>
+        <span>JEV: <strong id="stat-jev">0</strong></span>
+        <span>Overrides: <strong id="stat-manual">0</strong></span>
+    </div>
+</header>
 
 <fieldset>
     <legend>1. Connect</legend>
@@ -160,12 +298,45 @@
     <button id="connect">Connect</button>
 </fieldset>
 
+<details class="rules-panel" id="rules-panel">
+    <summary>Prefilter Rules (<span id="rules-count">0</span>) — deterministic rules run before JEV</summary>
+    <div class="rule-form">
+        <select id="rule-field" title="Match field">
+            <option value="FROM_DOMAIN">From domain</option>
+            <option value="FROM_ADDRESS">From address</option>
+            <option value="SUBJECT_CONTAINS">Subject contains</option>
+        </select>
+        <input id="rule-pattern" placeholder="e.g. newsletter.example.com" size="26">
+        <select id="rule-action" title="Action when matched">
+            <option value="ARCHIVE">ARCHIVE</option>
+            <option value="MOVE_TO_TRASH">MOVE_TO_TRASH</option>
+            <option value="KEEP">KEEP</option>
+            <option value="FLAG_FOR_REVIEW">FLAG_FOR_REVIEW</option>
+        </select>
+        <input id="rule-category" placeholder="Category (Rule)" size="14">
+        <button id="add-rule-btn" type="button">Add rule</button>
+    </div>
+    <div class="rules-list">
+        <table>
+            <thead><tr><th>Match</th><th>Pattern</th><th>Action</th><th>Category</th><th></th></tr></thead>
+            <tbody id="rules-tbody"></tbody>
+        </table>
+    </div>
+</details>
+
 <fieldset>
     <legend>2. Plan &amp; Apply</legend>
     <select id="account">Saved profiles</select>
-    <label>Batch size <input id="limit" type="number" value="25" size="4"></label>
+    <label>Batch size <input id="limit" type="number" value="10" size="4"></label>
     <button id="preview-btn" disabled>Preview (creates a plan)</button>
     <button id="apply" disabled>Apply plan to mailbox</button>
+
+    <div class="mode-row">
+        <button id="autopilot-toggle" type="button" disabled>Start Autopilot</button>
+        <label>Every (sec) <input id="autopilot-interval" type="number" value="120" min="10" size="5"></label>
+        <button id="activity-feed-btn" type="button">Recent Activity</button>
+        <span id="autopilot-status" class="autopilot-status">Autopilot: Off</span>
+    </div>
 </fieldset>
 
 <div id="spinner">
@@ -175,8 +346,16 @@
 
 <p id="msg"></p>
 <div id="summary"></div>
-<table>
-    <thead><tr><th>From</th><th>Subject</th><th>Category</th><th>Conf.</th><th>Action</th><th>Reason</th></tr></thead>
+<table class="main-table">
+    <thead>
+    <tr>
+        <th class="col-action">Action</th>
+        <th class="col-from">From</th>
+        <th class="col-subject">Subject</th>
+        <th class="col-cat">Category</th>
+        <th class="col-reason">Reason</th>
+    </tr>
+    </thead>
     <tbody id="rows"></tbody>
 </table>
 
@@ -190,7 +369,10 @@
                 <div class="subject" id="preview-subject"></div>
                 <div class="date" id="preview-date"></div>
             </div>
-            <button id="preview-close" title="Close preview">✕</button>
+            <div id="preview-actions">
+                <button id="promote-rule-btn" class="btn-sm" type="button" style="display:none;">+ Rule from sender</button>
+                <button id="preview-close" title="Close preview">✕</button>
+            </div>
         </div>
         <div id="preview-loading" style="display:none;">Loading…</div>
         <pre id="preview-body" class="empty">Select a row to preview the email (plain text only).</pre>
@@ -206,8 +388,13 @@
     let overrides = {};
     // currently open email id (for highlighting / stale-response check)
     let selectedEmailId = null;
+    let selectedFrom = '';
+    let selectedCurrentAction = 'KEEP';
     // the <tr> that hosts the preview while it is open
     let detailRow = null;
+    // autopilot state
+    let autopilotEnabled = false;
+    let viewingActivityFeed = false;
 
     const ACTIONS = ['KEEP', 'FLAG_FOR_REVIEW', 'ARCHIVE', 'MOVE_TO_TRASH'];
 
@@ -241,28 +428,37 @@
         $('spinner').classList.toggle('visible', on);
         $('spinner-text').textContent = text;
         $('connect').disabled = on;
-        $('preview-btn').disabled = on || !$('preview-btn').dataset.enabled;
-        $('apply').disabled = on || !$('apply').dataset.enabled;
+        const canManual = !on && !autopilotEnabled && !!$('preview-btn').dataset.enabled;
+        $('preview-btn').disabled = !canManual;
+        $('apply').disabled = on || autopilotEnabled || !$('apply').dataset.enabled;
     }
 
     function enablePreview(ok) {
         $('preview-btn').dataset.enabled = ok ? '1' : '';
-        if (!ok) $('preview-btn').disabled = true;
-        else if (!$('spinner').classList.contains('visible')) $('preview-btn').disabled = false;
+        $('autopilot-toggle').disabled = !ok && !autopilotEnabled;
+        if (!ok) {
+            $('preview-btn').disabled = true;
+        } else if (!$('spinner').classList.contains('visible') && !autopilotEnabled) {
+            $('preview-btn').disabled = false;
+        }
     }
 
     function enableApply(ok) {
         $('apply').dataset.enabled = ok ? '1' : '';
-        if (!ok) $('apply').disabled = true;
-        else if (!$('spinner').classList.contains('visible')) $('apply').disabled = false;
+        if (!ok) {
+            $('apply').disabled = true;
+        } else if (!$('spinner').classList.contains('visible') && !autopilotEnabled) {
+            $('apply').disabled = false;
+        }
     }
 
-    async function api(path, body) {
-        const res = await fetch(path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
+    async function api(path, body, method = 'POST') {
+        const opts = { method };
+        if (body !== undefined) {
+            opts.headers = { 'Content-Type': 'application/json' };
+            opts.body = JSON.stringify(body);
+        }
+        const res = await fetch(path, opts);
         let data = {};
         try { data = await res.json(); } catch (_) { /* non-JSON error body */ }
         if (!res.ok) throw new Error(data.error || res.statusText);
@@ -271,12 +467,13 @@
 
     function show(text, isError = false) {
         $('msg').textContent = text;
-        $('msg').className = isError ? 'err' : (text.startsWith('Connected') || text.startsWith('Applied') ? 'ok' : '');
+        $('msg').className = isError ? 'err' : (text.startsWith('Connected') || text.startsWith('Applied') || text.startsWith('Autopilot') ? 'ok' : '');
     }
 
     function cell(row, text) {
         const td = document.createElement('td');
         td.textContent = text ?? '';
+        td.title = text ?? '';
         row.appendChild(td);
         return td;
     }
@@ -298,23 +495,255 @@
         renderSummary(counts);
     }
 
+    // ── Stats & Activity Feed (SQLite backed) ───────────
+
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/stats');
+            if (!res.ok) return;
+            const s = await res.json();
+            const total = s.totalSorted ?? s.total ?? 0;
+            const ruleHits = s.ruleHits ?? s.rules ?? 0;
+            const jevHits = s.jevHits ?? s.jev ?? 0;
+            const manualHits = s.manualOverrides ?? s.manual ?? 0;
+            const pct = total > 0 ? Math.round((ruleHits / total) * 100) : 0;
+
+            $('stat-total').textContent = total.toLocaleString();
+            $('stat-rule-pct').textContent = `${pct}% (${ruleHits.toLocaleString()})`;
+            $('stat-jev').textContent = jevHits.toLocaleString();
+            $('stat-manual').textContent = manualHits.toLocaleString();
+        } catch (_) { /* ignore transient stats errors */ }
+    }
+
+    async function loadActivityFeed() {
+        viewingActivityFeed = true;
+        currentPlanId = null;
+        overrides = {};
+        closePreview();
+        enableApply(false);
+        $('summary').replaceChildren();
+
+        try {
+            const res = await fetch('/api/activity?limit=50');
+            if (!res.ok) throw new Error(`Failed to load activity (${res.status})`);
+            const items = await res.json();
+            const list = Array.isArray(items) ? items : (items.entries || []);
+
+            $('rows').replaceChildren(...list.map(e => {
+                const tr = document.createElement('tr');
+                const action = e.action || 'KEEP';
+
+                const badge = document.createElement('span');
+                badge.className = 'badge static-badge ' + action;
+                badge.textContent = action;
+                const actionCell = document.createElement('td');
+                actionCell.appendChild(badge);
+                tr.appendChild(actionCell);
+
+                cell(tr, e.from ?? e.fromAddr ?? '');
+                cell(tr, e.subject ?? '');
+                cell(tr, e.category ?? '');
+
+                const reasonCell = document.createElement('td');
+                const src = (e.source || e.classificationSource || '').toUpperCase();
+                if (src) {
+                    const tag = document.createElement('span');
+                    tag.className = 'src-tag' + (src === 'RULE' ? ' rule' : '');
+                    tag.textContent = src;
+                    reasonCell.appendChild(tag);
+                }
+                const rText = document.createTextNode(
+                    [e.reason, e.timestamp || e.createdAt].filter(Boolean).join(' · ')
+                );
+                reasonCell.appendChild(rText);
+                reasonCell.title = reasonCell.textContent;
+                tr.appendChild(reasonCell);
+
+                return tr;
+            }));
+
+            show(list.length
+                ? `Showing ${list.length} recent persisted actions from SQLite.`
+                : 'No persisted activity yet.');
+        } catch (err) {
+            show(err.message, true);
+        }
+    }
+
+    $('activity-feed-btn').onclick = loadActivityFeed;
+
+    // ── Prefilter Rules (SQLite backed) ─────────────────
+
+    function extractDomain(fromStr) {
+        const match = (fromStr || '').match(/@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        return match ? match[1].toLowerCase() : '';
+    }
+
+    function renderRules(rules) {
+        const list = Array.isArray(rules) ? rules : [];
+        $('rules-count').textContent = list.length;
+
+        $('rules-tbody').replaceChildren(...list.map(r => {
+            const tr = document.createElement('tr');
+            cell(tr, r.field || r.matchType || '');
+            cell(tr, r.pattern || '');
+
+            const badge = document.createElement('span');
+            badge.className = 'badge static-badge ' + (r.action || 'KEEP');
+            badge.textContent = r.action || 'KEEP';
+            const actTd = document.createElement('td');
+            actTd.appendChild(badge);
+            tr.appendChild(actTd);
+
+            cell(tr, r.category || 'Rule');
+
+            const delTd = document.createElement('td');
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn-sm';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Delete rule';
+            delBtn.onclick = async () => {
+                try {
+                    await api(`/api/rules/${encodeURIComponent(r.id)}`, undefined, 'DELETE');
+                    await loadRules();
+                    show('Rule removed.');
+                } catch (err) {
+                    show(err.message, true);
+                }
+            };
+            delTd.appendChild(delBtn);
+            tr.appendChild(delTd);
+
+            return tr;
+        }));
+    }
+
+    async function loadRules() {
+        try {
+            const res = await fetch('/api/rules');
+            if (!res.ok) return;
+            const data = await res.json();
+            renderRules(Array.isArray(data) ? data : (data.rules || []));
+        } catch (_) { /* ignore if rules endpoint not yet wired */ }
+    }
+
+    $('add-rule-btn').onclick = async () => {
+        const pattern = $('rule-pattern').value.trim();
+        if (!pattern) {
+            show('Enter a pattern for the prefilter rule.', true);
+            return;
+        }
+        try {
+            await api('/api/rules', {
+                field: $('rule-field').value,
+                pattern,
+                action: $('rule-action').value,
+                category: $('rule-category').value.trim() || 'Rule'
+            });
+            $('rule-pattern').value = '';
+            await loadRules();
+            show('Prefilter rule saved.');
+        } catch (err) {
+            show(err.message, true);
+        }
+    };
+
+    $('promote-rule-btn').onclick = async () => {
+        const domain = extractDomain(selectedFrom);
+        const pattern = domain || selectedFrom.trim();
+        if (!pattern) return;
+
+        const field = domain ? 'FROM_DOMAIN' : 'FROM_ADDRESS';
+        const action = selectedCurrentAction || 'ARCHIVE';
+
+        try {
+            await api('/api/rules', {
+                field,
+                pattern,
+                action,
+                category: 'Rule'
+            });
+            $('rules-panel').open = true;
+            await loadRules();
+            show(`Rule created: ${field} "${pattern}" → ${action}`);
+        } catch (err) {
+            show(err.message, true);
+        }
+    };
+
+    // ── Autopilot Mode ──────────────────────────────────
+
+    function syncAutopilotUI(enabled, intervalSeconds) {
+        autopilotEnabled = !!enabled;
+        if (intervalSeconds) $('autopilot-interval').value = intervalSeconds;
+
+        const btn = $('autopilot-toggle');
+        const status = $('autopilot-status');
+
+        if (autopilotEnabled) {
+            btn.textContent = 'Stop Autopilot';
+            btn.classList.add('active-mode');
+            status.textContent = `Autopilot: Running (every ${$('autopilot-interval').value}s)`;
+            status.classList.add('live');
+            $('preview-btn').disabled = true;
+            $('apply').disabled = true;
+        } else {
+            btn.textContent = 'Start Autopilot';
+            btn.classList.remove('active-mode');
+            status.textContent = 'Autopilot: Off';
+            status.classList.remove('live');
+            setLoading(false);
+        }
+    }
+
+    $('autopilot-toggle').onclick = async () => {
+        const nextState = !autopilotEnabled;
+        const intervalSeconds = Math.max(10, +$('autopilot-interval').value || 120);
+        const limit = Math.max(1, +$('limit').value || 10);
+
+        try {
+            const res = await api('/api/autopilot', {
+                enabled: nextState,
+                intervalSeconds,
+                limit
+            });
+            syncAutopilotUI(res.enabled ?? nextState, res.intervalSeconds ?? intervalSeconds);
+            if (autopilotEnabled) {
+                show(`Autopilot enabled (${intervalSeconds}s interval).`);
+                await loadActivityFeed();
+            } else {
+                show('Autopilot stopped.');
+            }
+        } catch (err) {
+            show(err.message, true);
+        }
+    };
+
+    async function loadAutopilotStatus() {
+        try {
+            const res = await fetch('/api/autopilot');
+            if (!res.ok) return;
+            const data = await res.json();
+            syncAutopilotUI(data.enabled, data.intervalSeconds);
+        } catch (_) { /* ignore */ }
+    }
+
+    // ── Accounts ────────────────────────────────────────
+
     async function loadAccounts() {
         try {
-            console.log('Loading accounts...');
-
             const response = await fetch('/api/accounts');
-
             if (!response.ok) {
                 throw new Error(`Failed to load accounts: ${response.status}`);
             }
 
             const accounts = await response.json();
-            console.log('Accounts:', accounts);
-
             const sel = document.getElementById('account');
             sel.replaceChildren();
 
-            if (!accounts.some(a => a.status === 'ACTIVE')) {
+            const hasActive = accounts.some(a => a.status === 'ACTIVE');
+            if (!hasActive) {
                 const placeholder = new Option('Select an account…', '', true, true);
                 placeholder.disabled = true;
                 sel.add(placeholder);
@@ -331,18 +760,17 @@
 
             sel.add(new Option('+ Add account…', '__new__'));
 
+            if (hasActive) {
+                enablePreview(true);
+            }
             if (accounts.length === 0) {
                 show('Use the connection form above to add an account.');
             }
-
         } catch (error) {
             console.error('Account loading failed:', error);
             show(error.message, true);
         }
     }
-
-
-    // ── Account selection ───────────────────────────────
 
     document.getElementById('account').addEventListener('change', async (e) => {
         const accountId = e.target.value;
@@ -375,25 +803,19 @@
             await loadAccounts();
             enablePreview(true);
             show('Connected.');
-
         } catch (error) {
             console.error('Account connection failed:', error);
             show(error.message, true);
-
         } finally {
             setLoading(false);
         }
     });
 
-
-    // ── Initial load ────────────────────────────────────
-
-    loadAccounts();
-
     // ── Preview helpers ─────────────────────────────────
 
     function closePreview() {
         selectedEmailId = null;
+        selectedFrom = '';
 
         document.querySelectorAll('#rows tr.selected').forEach(r => r.classList.remove('selected'));
 
@@ -406,6 +828,7 @@
         detailRow?.remove();
         detailRow = null;
 
+        $('promote-rule-btn').style.display = 'none';
         $('preview-from').textContent = '';
         $('preview-subject').textContent = '';
         $('preview-date').textContent = '';
@@ -414,18 +837,26 @@
         $('preview-loading').style.display = 'none';
     }
 
-    async function openPreview(emailId, from, subject, row) {
+    async function openPreview(emailId, from, subject, currentAction, row) {
         closePreview();
 
         selectedEmailId = emailId || null;
+        selectedFrom = from || '';
+        selectedCurrentAction = currentAction || 'ARCHIVE';
         row.classList.add('selected');
 
-        // Expandable row immediately below the clicked row
+        const domain = extractDomain(selectedFrom);
+        if (domain || selectedFrom.trim()) {
+            $('promote-rule-btn').textContent = domain ? `+ Rule (@${domain})` : '+ Rule from sender';
+            $('promote-rule-btn').style.display = 'inline-block';
+        }
+
+        // Expandable row immediately below the clicked row (5 columns)
         detailRow = document.createElement('tr');
         detailRow.className = 'detail-row';
 
         const detailCell = document.createElement('td');
-        detailCell.colSpan = 6;
+        detailCell.colSpan = 5;
         detailRow.appendChild(detailCell);
         row.after(detailRow);
 
@@ -449,7 +880,6 @@
         try {
             const data = await api('/api/email', { emailId });
 
-            // Ignore responses from a row that is no longer selected
             if (selectedEmailId !== emailId) return;
 
             const text = data.textBody ?? data.body ?? data.plainText;
@@ -461,9 +891,11 @@
             }
 
             if (data.date) $('preview-date').textContent = data.date;
-            if (data.from) $('preview-from').textContent = data.from;
+            if (data.from) {
+                $('preview-from').textContent = data.from;
+                selectedFrom = data.from;
+            }
             if (data.subject) $('preview-subject').textContent = data.subject;
-
         } catch (e) {
             if (selectedEmailId === emailId) {
                 $('preview-body').textContent = 'Failed to load email: ' + e.message;
@@ -477,9 +909,10 @@
 
     $('preview-close').onclick = closePreview;
 
-    // ── Plan rendering ──────────────────────────────────
+    // ── Plan rendering (Action first, no Confidence) ────
 
     function renderPlan(plan) {
+        viewingActivityFeed = false;
         currentPlanId = plan.planId;
         overrides = {};
         closePreview();
@@ -494,11 +927,7 @@
 
             if (key != null) tr.dataset.emailId = String(key);
 
-            cell(tr, e.from);
-            cell(tr, e.subject);
-            cell(tr, e.category);
-            cell(tr, e.confidence != null ? Math.round(e.confidence * 100) + '%' : '–');
-
+            // 1. Action badge first
             const badge = document.createElement('span');
             badge.className = 'badge ' + e.action;
             badge.textContent = e.action;
@@ -512,23 +941,43 @@
                     badge.textContent = next;
                     badge.className = 'badge ' + next;
                     overrides[key] = next;
+                    if (selectedEmailId === key) selectedCurrentAction = next;
                     updateSummaryFromTable();
                 };
             } else {
-                // Without an id the override can't be sent to the backend,
-                // so don't let the UI pretend it changed.
                 badge.classList.add('locked');
                 badge.title = 'This entry has no id, so its action cannot be changed';
                 badge.onclick = ev => ev.stopPropagation();
             }
 
-            cell(tr, '').appendChild(badge);
-            cell(tr, e.reason);
+            const actionTd = document.createElement('td');
+            actionTd.appendChild(badge);
+            tr.appendChild(actionTd);
+
+            // 2. From
+            cell(tr, e.from);
+            // 3. Subject
+            cell(tr, e.subject);
+            // 4. Category
+            cell(tr, e.category);
+
+            // 5. Reason (with optional prefilter rule tag)
+            const reasonTd = document.createElement('td');
+            const isRule = e.source === 'RULE' || e.matchedRule || e.fromRule;
+            if (isRule) {
+                const tag = document.createElement('span');
+                tag.className = 'src-tag rule';
+                tag.textContent = 'RULE';
+                reasonTd.appendChild(tag);
+            }
+            reasonTd.appendChild(document.createTextNode(e.reason ?? ''));
+            reasonTd.title = (isRule ? '[RULE] ' : '') + (e.reason ?? '');
+            tr.appendChild(reasonTd);
 
             tr.style.cursor = 'pointer';
             tr.onclick = () => tr.classList.contains('selected')
                 ? closePreview()
-                : openPreview(key, e.from, e.subject, tr);
+                : openPreview(key, e.from, e.subject, badge.textContent, tr);
             return tr;
         }));
     }
@@ -558,8 +1007,6 @@
             if (!provider) {
                 body.host = $('host').value;
                 body.port = +$('port').value;
-                // kept as a string to match the previous behaviour; if your
-                // backend expects a real boolean, send $('ssl').checked instead
                 body.ssl  = String($('ssl').checked);
             }
             await api('/api/connect', body);
@@ -575,6 +1022,7 @@
     };
 
     $('preview-btn').onclick = async () => {
+        if (autopilotEnabled) return;
         setLoading(true, 'Classifying…');
         show('');
         try {
@@ -595,7 +1043,7 @@
     };
 
     $('apply').onclick = async () => {
-        if (!currentPlanId) return;
+        if (!currentPlanId || autopilotEnabled) return;
         if (!confirm('Apply the current plan to the mailbox?')) return;
 
         setLoading(true, 'Applying plan…');
@@ -612,6 +1060,7 @@
             const failCount = (result.failures || []).length;
 
             clearPlan();
+            await loadStats();
             show(failCount
                 ? `Applied (${applied}). ${failCount} failure(s) – they can be retried next run.`
                 : `Applied (${applied}).`);
@@ -621,6 +1070,42 @@
             setLoading(false);
         }
     };
+
+    // ── Live SSE Stream (Autopilot + Stats updates) ─────
+
+    function connectEvents() {
+        try {
+            const es = new EventSource('/api/events');
+            es.addEventListener('stats', () => loadStats());
+            es.addEventListener('autopilot', async (ev) => {
+                await loadStats();
+                if (ev.data) show(`Autopilot: ${ev.data}`);
+                if (autopilotEnabled || viewingActivityFeed) {
+                    await loadActivityFeed();
+                }
+            });
+            es.onmessage = async (ev) => {
+                try {
+                    const msg = JSON.parse(ev.data);
+                    if (msg.type === 'stats' || msg.type === 'autopilot') {
+                        await loadStats();
+                        if (msg.summary) show(`Autopilot: ${msg.summary}`);
+                        if (autopilotEnabled || viewingActivityFeed) {
+                            await loadActivityFeed();
+                        }
+                    }
+                } catch (_) { /* plain text message ignored */ }
+            };
+        } catch (_) { /* SSE optional */ }
+    }
+
+    // ── Initial load ────────────────────────────────────
+
+    loadAccounts();
+    loadStats();
+    loadRules();
+    loadAutopilotStatus();
+    connectEvents();
 </script>
 </body>
 </html>

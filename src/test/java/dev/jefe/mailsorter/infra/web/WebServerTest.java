@@ -8,9 +8,12 @@ import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.application.service.AccountService;
+import dev.jefe.mailsorter.application.service.RuleService;
+import dev.jefe.mailsorter.application.service.prefilter.Rule;
 import dev.jefe.mailsorter.domain.*;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 
+import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryRuleStore;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,10 +118,13 @@ class WebServerTest {
             return new Plan("test-plan-id", List.of(entry));
         };
 
+        RuleRepository testRuleRepo = new InMemoryRuleStore();
+        RuleService ruleService = new RuleService(testRuleRepo, ignored -> {});
+
         ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
         GetEmailUseCase getEmail = Fakes::fakeEmail;
 
-        web = new WebServer("127.0.0.1", 0, accountService, accountService, classify, apply, getEmail);
+        web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail, ruleService);
         web.start();
     }
 

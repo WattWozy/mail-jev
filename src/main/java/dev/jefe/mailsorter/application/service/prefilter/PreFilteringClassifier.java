@@ -6,20 +6,25 @@ import dev.jefe.mailsorter.domain.Email;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class PreFilteringClassifier implements Classifier {
 
     private final Classifier delegate;
-    private final List<Rule> rules; // order matters: first match wins
+    private final AtomicReference<List<Rule>> rules;
 
-    public PreFilteringClassifier(Classifier delegate, List<Rule> rules) {
+    public PreFilteringClassifier(Classifier delegate, List<Rule> initialRules) {
         this.delegate = delegate;
-        this.rules = List.copyOf(rules);
+        this.rules = new AtomicReference<>(List.copyOf(initialRules));
+    }
+
+    public void replaceRules(List<? extends Rule> updated) {
+        this.rules.set(List.copyOf(updated));
     }
 
     @Override
     public Classification classify(Email email) {
-        for (Rule rule : rules) {
+        for (Rule rule : rules.get()) {
             Optional<Classification> result = rule.apply(email);
             if (result.isPresent()) {
                 return result.get();
