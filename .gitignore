@@ -5,6 +5,9 @@ build/
 *.class
 *.jar
 *.war
+desktop/dist
+desktop/build
+desktop/node_modules
 
 # IDEs
 .idea/
@@ -26,7 +29,6 @@ bin/
 *.p12
 
 # Logs & Local DBs
-*.log
 *.log
 logs/
 data/
