@@ -1,4 +1,6 @@
-const { app, BrowserWindow, dialog, safeStorage, shell } = require('electron');
+const {
+  app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, powerMonitor, safeStorage, shell,
+} = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -12,20 +14,25 @@ let backend = null;
 let win = null;
 let quitting = false;
 let ready = false;
+let tray = null;
+let backendPort = null;
+
+// Launched by "Start with Windows": run in the tray without opening the window.
+const startHidden = process.argv.includes('--hidden');
+const ICON = path.join(__dirname, 'assets', 'icon.png');
+
+app.setAppUserModelId('com.jev.mailsorter'); // required for Windows notifications
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  });
+  app.on('second-instance', () => showWindow());
   app.whenReady().then(main).catch(fatal);
 }
 
 async function main() {
   win = createWindow();
+  createTray();
 
   const jev = jevEnv();
   if (app.isPackaged && !(jev.JEV_ENDPOINT && jev.JEV_API_KEY)) {
@@ -42,10 +49,116 @@ async function main() {
   }
 
   const port = await freePort();
+  backendPort = port;
   backend = startBackend(port);
   await waitForServer(port, backend);
   await win.loadURL(`http://127.0.0.1:${port}`);
   ready = true;
+  refreshTrayMenu();
+  listenForAutopilotEvents(port);
+
+  // After sleep the next scheduled run could be minutes away: sort right away instead.
+  powerMonitor.on('resume', () => postBackend('/api/autopilot/run'));
+}
+
+// ---------- tray & background ----------
+function createTray() {
+  const image = nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 });
+  tray = new Tray(image);
+  tray.setToolTip('Buzon');
+  tray.on('click', showWindow);
+  refreshTrayMenu();
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const startsWithOs = app.getLoginItemSettings().openAtLogin;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Buzon', click: showWindow },
+    {
+      label: 'Run autopilot now',
+      enabled: ready,
+      click: () => postBackend('/api/autopilot/run'),
+    },
+    { type: 'separator' },
+    {
+      label: process.platform === 'darwin' ? 'Open at login' : 'Start with Windows',
+      type: 'checkbox',
+      checked: startsWithOs,
+      // only meaningful for the installed app; in dev it would register electron.exe
+      enabled: app.isPackaged,
+      click: (item) => {
+        app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] });
+        refreshTrayMenu();
+      },
+    },
+    { type: 'separator' },
+    { label: 'Quit Buzon', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+function showWindow() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+let hintShown = false;
+function hideToTray() {
+  win.hide();
+  if (!hintShown && Notification.isSupported()) {
+    hintShown = true;
+    new Notification({
+      title: 'Buzon is still running',
+      body: 'Autopilot keeps sorting in the background. Quit from the tray icon.',
+      icon: ICON,
+    }).show();
+  }
+}
+
+function postBackend(urlPath) {
+  if (!backendPort) return;
+  const req = http.request({ host: '127.0.0.1', port: backendPort, path: urlPath, method: 'POST',
+    headers: { 'Content-Type': 'application/json' } });
+  req.on('error', () => {});
+  req.end('{}');
+}
+
+// Follow the backend's SSE stream: tray tooltip shows the last run, notify when attention is needed.
+function listenForAutopilotEvents(port) {
+  const req = http.get({ host: '127.0.0.1', port, path: '/api/events' }, (res) => {
+    let buffer = '';
+    let event = null;
+    res.setEncoding('utf8');
+    res.on('data', (chunk) => {
+      buffer += chunk;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).replace(/\r$/, '');
+        buffer = buffer.slice(nl + 1);
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:') && event === 'autopilot') onAutopilotEvent(line.slice(5).trim());
+        else if (line === '') event = null;
+      }
+    });
+    res.on('end', () => retry());
+  });
+  req.on('error', () => retry());
+
+  function retry() {
+    if (!quitting && backend && backend.exitCode === null) setTimeout(() => listenForAutopilotEvents(port), 5000);
+  }
+}
+
+function onAutopilotEvent(message) {
+  if (tray) tray.setToolTip(`Buzon: ${message}`.slice(0, 127));
+  const needsAttention = /failed|FLAG_FOR_REVIEW/.test(message);
+  if (needsAttention && win && !win.isVisible() && Notification.isSupported()) {
+    const n = new Notification({ title: 'Buzon autopilot', body: message, icon: ICON });
+    n.on('click', showWindow);
+    n.show();
+  }
 }
 
 // ---------- paths ----------
@@ -173,6 +286,7 @@ function createWindow() {
   const w = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: !startHidden,
     title: 'Buzon',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -194,6 +308,12 @@ function createWindow() {
       if (/^https?:/.test(url)) shell.openExternal(url);
     }
   });
+  // closing the window only hides it: the backend (and autopilot) keeps running in the tray
+  w.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    hideToTray();
+  });
   return w;
 }
 
@@ -202,7 +322,8 @@ app.on('before-quit', () => {
   quitting = true;
   if (backend && backend.exitCode === null) backend.kill();
 });
-app.on('window-all-closed', () => app.quit());
+// no 'window-all-closed' quit: the app lives in the tray until "Quit Buzon"
+app.on('window-all-closed', () => {});
 
 function fatal(err) {
   quitting = true;

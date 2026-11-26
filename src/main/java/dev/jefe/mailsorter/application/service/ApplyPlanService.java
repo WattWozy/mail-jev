@@ -7,9 +7,13 @@ import dev.jefe.mailsorter.application.port.in.ApplyPlanUseCase;
 import dev.jefe.mailsorter.application.port.in.dto.ApplyResult;
 import dev.jefe.mailsorter.application.port.in.dto.Plan;
 import dev.jefe.mailsorter.application.port.out.*;
+import dev.jefe.mailsorter.application.port.out.dto.ActivityEntry;
 import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
 import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.infra.logging.AppLog;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -20,9 +24,13 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
     private final ConnectionStore store;
     private final PlanStore plans;
     private final AuditLog audit;
+    private final ActivityRepository activity;
+    private final Clock clock;
 
-    public ApplyPlanService(ConnectionStore store, PlanStore plans, AuditLog audit) {
+    public ApplyPlanService(ConnectionStore store, PlanStore plans, AuditLog audit,
+                            ActivityRepository activity, Clock clock) {
         this.store = store; this.plans = plans; this.audit = audit;
+        this.activity = activity; this.clock = clock;
     }
 
     @Override
@@ -44,19 +52,33 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
 
         Map<Action, Long> applied = new EnumMap<>(Action.class);
         List<ApplyResult.Failure> failures = new ArrayList<>();
+        Instant now = clock.instant();
 
         for (Plan.Entry e : plan.entries()) {
             Action action = command.overrides().getOrDefault(e.emailId(), e.action());
             if (failedIds.contains(e.emailId())) {
                 failures.add(new ApplyResult.Failure(e.emailId(), "mailbox operation failed"));
             } else {
-                audit.record(e.emailId(), e.classification(), action, action != e.action());
+                boolean overridden = action != e.action();
+                audit.record(e.emailId(), e.classification(), action, overridden);
+                recordActivity(now, mailbox.accountId(), e, action, overridden);
                 applied.merge(action, 1L, Long::sum);
             }
         }
 
         plans.remove(plan.id());
         return new ApplyResult(applied, List.copyOf(failures));
+    }
+
+    /** Best effort: the mailbox has already changed, a bookkeeping failure must not fail the apply. */
+    private void recordActivity(Instant at, String accountId, Plan.Entry e, Action action, boolean overridden) {
+        var c = e.classification();
+        try {
+            activity.record(new ActivityEntry(at, accountId, e.emailId(), e.from(), e.subject(),
+                    c.category(), c.confidence(), c.reason(), action, c.source(), overridden));
+        } catch (RuntimeException ex) {
+            AppLog.warn(ApplyPlanService.class, "Could not record activity for " + e.emailId() + ": " + ex);
+        }
     }
 
     private static void validate(Plan plan, Map<String, Action> overrides) {

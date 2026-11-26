@@ -2,6 +2,7 @@ package dev.jefe.mailsorter.application.service.prefilter;
 
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.ClassificationSource;
 import dev.jefe.mailsorter.domain.model.Email;
 
 import java.util.List;
@@ -27,7 +28,7 @@ public final class PreFilteringClassifier implements Classifier {
         for (Rule rule : rules.get()) {
             Optional<Classification> result = rule.apply(email);
             if (result.isPresent()) {
-                return result.get();
+                return result.get().from(ClassificationSource.RULE);
             }
         }
         return delegate.classify(email);

@@ -5,6 +5,7 @@ import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule
 import dev.jefe.mailsorter.application.service.prefilter.rules.ListUnsubscribeRule;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.ClassificationSource;
 import dev.jefe.mailsorter.domain.model.Email;
 import org.junit.jupiter.api.Test;
 
@@ -59,5 +60,19 @@ class PreFilteringClassifierTest {
 
         assertThat(result.reason()).isEqualTo("delegate");
         assertThat(delegateCalls).hasValue(1);
+    }
+
+    @Test
+    void aRuleHitIsMarkedAsComingFromARule() {
+        var result = classifier.classify(email("Your invoice #123", Map.of()));
+
+        assertThat(result.source()).isEqualTo(ClassificationSource.RULE);
+    }
+
+    @Test
+    void aDelegatedResultIsMarkedAsComingFromTheModel() {
+        var result = classifier.classify(email("Lunch tomorrow?", Map.of()));
+
+        assertThat(result.source()).isEqualTo(ClassificationSource.MODEL);
     }
 }

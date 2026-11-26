@@ -12,6 +12,7 @@ import dev.jefe.mailsorter.application.port.out.PlanStore;
 import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.ClassificationSource;
 import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.domain.policy.PolicyEngine;
 import dev.jefe.mailsorter.infra.logging.AppLog;
@@ -134,7 +135,8 @@ public final class ClassifyService implements ClassifyUseCase {
 
     private static Classification unknown(ClassificationCache.Key key, ClassificationFailedException e) {
         AppLog.warn(ClassifyService.class, "JEV classification failed for key={" + key + "}, error={" + e + "}");
-        return new Classification(Category.UNKNOWN, 0.0, "classification failed: " + e.getMessage());
+        return new Classification(Category.UNKNOWN, 0.0, "classification failed: " + e.getMessage(),
+                ClassificationSource.FALLBACK);
     }
 
     private record EvaluatedEmail(Email email, ClassificationCache.Key cacheKey,

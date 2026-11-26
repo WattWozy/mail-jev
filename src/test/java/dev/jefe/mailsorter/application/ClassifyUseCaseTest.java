@@ -128,6 +128,8 @@ class ClassifyUseCaseTest {
 
         assertThat(plan.entries().get(0).classification().reason())
                 .contains("classification failed");
+        assertThat(plan.entries().get(0).classification().source())
+                .isEqualTo(dev.jefe.mailsorter.domain.model.ClassificationSource.FALLBACK);
     }
 
     @Test

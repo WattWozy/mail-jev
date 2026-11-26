@@ -12,7 +12,15 @@ import dev.jefe.mailsorter.application.port.in.dto.Plan;
 import dev.jefe.mailsorter.application.port.out.*;
 import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
 import dev.jefe.mailsorter.application.service.AccountService;
+import dev.jefe.mailsorter.application.service.ActivityService;
+import dev.jefe.mailsorter.application.service.AutopilotService;
+import dev.jefe.mailsorter.application.port.out.dto.ActivityEntry;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryActivityRepository;
+import java.time.Instant;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import dev.jefe.mailsorter.application.service.RuleService;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryAutopilotSettingsStore;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 
 import dev.jefe.mailsorter.domain.model.*;
@@ -27,6 +35,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -44,6 +54,8 @@ class WebServerTest {
     private volatile RuntimeException connectFailure;
     private volatile RuntimeException classifyFailure;
     private WebServer web;
+    private SseBroadcaster events;
+    private InMemoryActivityRepository activityRepo;
 
     @BeforeEach
     void start() throws IOException {
@@ -127,8 +139,30 @@ class WebServerTest {
         ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
         GetEmailUseCase getEmail = Fakes::fakeEmail;
 
-        web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail, ruleService);
+        Scheduler noopScheduler = new Scheduler() {
+            @Override public void start(Runnable task, Duration interval) {}
+            @Override public void stop() {}
+        };
+        events = new SseBroadcaster();
+        AutopilotUseCase autopilot = new AutopilotService(classify, apply, accountService,
+                new InMemoryAutopilotSettingsStore(), noopScheduler, events, Clock.systemUTC());
+
+        activityRepo = new InMemoryActivityRepository();
+        ActivityUseCase activity = new ActivityService(activityRepo);
+
+        web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail, ruleService,
+                autopilot, activity, events);
         web.start();
+    }
+
+    private HttpResponse<String> get(String path) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + path)).GET().build();
+        return http.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void connectGmx() throws Exception {
+        assertThat(post("/api/connect", """
+            {"provider":"gmx","username":"me@gmx.com","secret":"x"}""").statusCode()).isEqualTo(200);
     }
 
     @AfterEach
@@ -195,6 +229,130 @@ class WebServerTest {
         classifyFailure = new NotConnectedException();
 
         assertThat(post("/api/classify", "{}").statusCode()).isEqualTo(409);
+    }
+
+    // ── autopilot ───────────────────────────────────────────────────────────
+
+    @Test
+    void autopilotStatusIsOffByDefault() throws Exception {
+        var response = get("/api/autopilot");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body());
+        assertThat(body.get("enabled").asBoolean()).isFalse();
+        assertThat(body.get("intervalSeconds").asInt()).isPositive();
+        assertThat(body.get("lastRunAt").isNull()).isTrue();
+    }
+
+    @Test
+    void enablingAutopilotReturnsTheNewStatus() throws Exception {
+        connectGmx();
+
+        var response = post("/api/autopilot", """
+            {"enabled":true,"intervalSeconds":60,"limit":15}""");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body());
+        assertThat(body.get("enabled").asBoolean()).isTrue();
+        assertThat(body.get("intervalSeconds").asInt()).isEqualTo(60);
+        assertThat(body.get("limit").asInt()).isEqualTo(15);
+        assertThat(json.readTree(get("/api/autopilot").body()).get("enabled").asBoolean()).isTrue();
+    }
+
+    @Test
+    void enablingAutopilotWithoutAnAccountIs409() throws Exception {
+        var response = post("/api/autopilot", """
+            {"enabled":true,"intervalSeconds":60,"limit":15}""");
+
+        assertThat(response.statusCode()).isEqualTo(409);
+    }
+
+    @Test
+    void anOutOfRangeAutopilotIntervalIs400() throws Exception {
+        connectGmx();
+
+        var response = post("/api/autopilot", """
+            {"enabled":true,"intervalSeconds":1,"limit":15}""");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void autopilotCanBeTriggeredManually() throws Exception {
+        connectGmx();
+        post("/api/autopilot", """
+            {"enabled":true,"intervalSeconds":60,"limit":15}""");
+
+        var response = post("/api/autopilot/run", "{}");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body());
+        assertThat(body.get("lastRunAt").asText()).isNotBlank();
+        assertThat(body.get("lastError").isNull()).isTrue();
+    }
+
+    // ── stats, activity, live events ───────────────────────────────────────
+
+    private void recordActivity(String id, ClassificationSource source) {
+        activityRepo.record(new ActivityEntry(Instant.parse("2026-11-26T20:00:00Z"), "gmx|me@gmx.com", id,
+                "news@shop.com", "Weekly deals", Category.NEWSLETTER, 0.97, "list header",
+                Action.ARCHIVE, source, false));
+    }
+
+    @Test
+    void statsSummariseTheActivity() throws Exception {
+        recordActivity("1", ClassificationSource.RULE);
+        recordActivity("2", ClassificationSource.MODEL);
+
+        var response = get("/api/stats");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body());
+        assertThat(body.get("totalSorted").asLong()).isEqualTo(2);
+        assertThat(body.get("ruleHits").asLong()).isEqualTo(1);
+        assertThat(body.get("jevHits").asLong()).isEqualTo(1);
+        assertThat(body.get("manualOverrides").asLong()).isZero();
+    }
+
+    @Test
+    void activityListsRecentEntriesInTheShapeTheUiReads() throws Exception {
+        recordActivity("1", ClassificationSource.RULE);
+
+        var response = get("/api/activity?limit=5");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var row = json.readTree(response.body()).get(0);
+        assertThat(row.get("emailId").asText()).isEqualTo("1");
+        assertThat(row.get("from").asText()).isEqualTo("news@shop.com");
+        assertThat(row.get("subject").asText()).isEqualTo("Weekly deals");
+        assertThat(row.get("category").asText()).isEqualTo("NEWSLETTER");
+        assertThat(row.get("action").asText()).isEqualTo("ARCHIVE");
+        assertThat(row.get("source").asText()).isEqualTo("RULE");
+        assertThat(row.get("reason").asText()).isEqualTo("list header");
+        assertThat(row.get("timestamp").asText()).isEqualTo("2026-11-26T20:00:00Z");
+    }
+
+    @Test
+    void anInvalidActivityLimitIs400() throws Exception {
+        assertThat(get("/api/activity?limit=abc").statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void liveEventsAreStreamedToTheUi() throws Exception {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + "/api/events")).GET().build();
+        HttpResponse<Stream<String>> response = http.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
+                .get(2, TimeUnit.SECONDS);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Content-Type")).hasValue("text/event-stream");
+
+        events.publish("autopilot", "Sorted 3 email(s)");
+
+        var lines = response.body().iterator();
+        String line;
+        do { line = lines.next(); } while (!line.startsWith("event:"));
+        assertThat(line).isEqualTo("event: autopilot");
+        assertThat(lines.next()).isEqualTo("data: Sorted 3 email(s)");
+        response.body().close();
     }
 
     @Test

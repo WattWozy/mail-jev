@@ -12,6 +12,7 @@ import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.application.port.in.dto.*;
+import dev.jefe.mailsorter.application.port.out.dto.ActivityEntry;
 import dev.jefe.mailsorter.application.service.AccountService;
 import dev.jefe.mailsorter.application.service.RuleService;
 import dev.jefe.mailsorter.application.service.prefilter.rules.RuleField;
@@ -29,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -46,6 +48,9 @@ public final class WebServer implements AutoCloseable {
     private final ListRulesUseCase listRules;
     private final AddRuleUseCase addRule;
     private final DeleteRuleUseCase deleteRule;
+    private final AutopilotUseCase autopilot;
+    private final ActivityUseCase activity;
+    private final SseBroadcaster events;
     private final ObjectMapper json = new ObjectMapper();
 
     public WebServer(String host, int port,
@@ -53,7 +58,13 @@ public final class WebServer implements AutoCloseable {
                      ClassifyUseCase classify,
                      ApplyPlanUseCase apply,
                      GetEmailUseCase getEmail,
-                     RuleService ruleService) throws IOException {
+                     RuleService ruleService,
+                     AutopilotUseCase autopilot,
+                     ActivityUseCase activity,
+                     SseBroadcaster events) throws IOException {
+        this.autopilot = autopilot;
+        this.activity = activity;
+        this.events = events;
         this.connectService = accountService;
         this.listAccounts = accountService;
         this.classify = classify;
@@ -72,7 +83,116 @@ public final class WebServer implements AutoCloseable {
         server.createContext("/api/classify", post(this::handleClassify));
         server.createContext("/api/apply", post(this::handleApply));
         server.createContext("/api/email", post(this::handleEmail));
+        server.createContext("/api/autopilot", this::handleAutopilot); // GET status, POST configure
+        server.createContext("/api/autopilot/run", post(body -> new Response(200, toJson(autopilot.runNow()))));
+        server.createContext("/api/stats", get(() -> new Response(200, activity.stats())));
+        server.createContext("/api/activity", this::handleActivity);   // GET ?limit=N
+        server.createContext("/api/events", this::handleEvents);       // SSE stream
         server.createContext("/", this::serveUi);
+        // virtual thread per exchange: a long-lived SSE stream must not block the other endpoints
+        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    // GET /api/activity?limit=50
+    private void handleActivity(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            Response r;
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                r = new Response(405, Map.of("error", "GET only"));
+            } else {
+                r = guarded(() -> {
+                    int limit = queryInt(exchange, "limit", 50);
+                    List<Map<String, Object>> rows = activity.recent(limit).stream().map(WebServer::toJson).toList();
+                    return new Response(200, rows);
+                });
+            }
+            send(exchange, r.status(), "application/json", write(r.body()));
+        }
+    }
+
+    // GET /api/events  (text/event-stream, stays open)
+    private void handleEvents(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                send(exchange, 405, "application/json", write(Map.of("error", "GET only")));
+                return;
+            }
+            events.subscribe(exchange);
+        }
+    }
+
+    private static int queryInt(HttpExchange exchange, String name, int fallback) {
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null) return fallback;
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(name)) {
+                try {
+                    return Integer.parseInt(pair.substring(eq + 1));
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException(name + " must be an integer");
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private static Map<String, Object> toJson(ActivityEntry e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("timestamp", e.timestamp().toString());
+        m.put("accountId", e.accountId());
+        m.put("emailId", e.emailId());
+        m.put("from", e.from());
+        m.put("subject", e.subject());
+        m.put("category", e.category().name());
+        m.put("confidence", e.confidence());
+        m.put("reason", e.reason());
+        m.put("action", e.action().name());
+        m.put("source", e.source().name());
+        m.put("overridden", e.overridden());
+        return m;
+    }
+
+    // GET /api/autopilot  |  POST /api/autopilot {enabled, intervalSeconds, limit}
+    private void handleAutopilot(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            String method = exchange.getRequestMethod();
+            Response r;
+            if ("GET".equals(method)) {
+                r = guarded(() -> new Response(200, toJson(autopilot.getStatus())));
+            } else if ("POST".equals(method)) {
+                try {
+                    JsonNode body = json.readTree(exchange.getRequestBody());
+                    r = guarded(() -> {
+                        if (!body.path("enabled").isBoolean()) {
+                            throw new IllegalArgumentException("enabled (boolean) is required");
+                        }
+                        var current = autopilot.getStatus();
+                        var status = autopilot.setEnabled(
+                                body.get("enabled").asBoolean(),
+                                body.path("intervalSeconds").asInt(current.intervalSeconds()),
+                                body.path("limit").asInt(current.limit()));
+                        return new Response(200, toJson(status));
+                    });
+                } catch (JsonProcessingException e) {
+                    r = new Response(400, Map.of("error", String.valueOf(e.getMessage())));
+                }
+            } else {
+                r = new Response(405, Map.of("error", "GET or POST only"));
+            }
+            send(exchange, r.status(), "application/json", write(r.body()));
+        }
+    }
+
+    private static Map<String, Object> toJson(AutopilotStatus status) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("enabled", status.enabled());
+        m.put("intervalSeconds", status.intervalSeconds());
+        m.put("limit", status.limit());
+        m.put("lastRunAt", status.lastRunAt() == null ? null : status.lastRunAt().toString());
+        m.put("lastResult", status.lastResult());
+        m.put("lastError", status.lastError());
+        return m;
     }
 
     public void start() { server.start(); }
