@@ -1,13 +1,13 @@
 package dev.jefe.mailsorter.application.service;
 
-import dev.jefe.mailsorter.application.port.in.AccountStatus;
-import dev.jefe.mailsorter.application.port.in.AccountView;
+import dev.jefe.mailsorter.application.port.in.dto.AccountStatus;
+import dev.jefe.mailsorter.application.port.in.dto.AccountView;
 import dev.jefe.mailsorter.application.port.in.ConnectUseCase;
 import dev.jefe.mailsorter.application.port.in.ListAccountsUseCase;
 import dev.jefe.mailsorter.application.port.out.ConnectionStore;
 import dev.jefe.mailsorter.application.port.out.CredentialStore;
 import dev.jefe.mailsorter.application.port.out.MailProviderFactory;
-import dev.jefe.mailsorter.domain.StoredCredential;
+import dev.jefe.mailsorter.domain.model.StoredCredential;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 
 import java.util.List;

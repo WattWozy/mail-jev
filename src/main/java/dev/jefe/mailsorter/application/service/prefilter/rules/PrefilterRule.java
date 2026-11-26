@@ -1,10 +1,10 @@
 package dev.jefe.mailsorter.application.service.prefilter.rules;
 
 import dev.jefe.mailsorter.application.service.prefilter.Rule;
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Classification;
-import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.Email;
 
 import java.util.Locale;
 import java.util.Optional;

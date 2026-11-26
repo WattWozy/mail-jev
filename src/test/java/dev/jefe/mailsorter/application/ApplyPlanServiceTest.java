@@ -2,19 +2,18 @@ package dev.jefe.mailsorter.application;
 
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
-import dev.jefe.mailsorter.application.port.in.ApplyCommand;
-import dev.jefe.mailsorter.application.port.in.ApplyResult;
-import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
-import dev.jefe.mailsorter.application.port.in.Plan;
+import dev.jefe.mailsorter.application.port.in.dto.ApplyCommand;
+import dev.jefe.mailsorter.application.port.in.dto.ApplyResult;
+import dev.jefe.mailsorter.application.port.in.dto.ClassifyCommand;
+import dev.jefe.mailsorter.application.port.in.dto.Plan;
 import dev.jefe.mailsorter.application.service.ApplyPlanService;
 import dev.jefe.mailsorter.application.service.ClassifyService;
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.PolicyEngine;
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryPlanStore;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.policy.PolicyEngine;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryPlanStore;
 import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -117,7 +116,6 @@ class ApplyPlanServiceTest {
         assertThat(plans.find(plan.id())).isPresent(); // still applicable
     }
 
-    @Disabled //todo: review!
     @Test
     void oneFailureDoesNotStopTheRestAndIsReported() {
         mailbox.withEmails(email("1"), email("2"));

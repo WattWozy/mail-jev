@@ -1,7 +1,7 @@
 package dev.jefe.mailsorter.application.port.out;
 
-import dev.jefe.mailsorter.domain.Credential;
-import dev.jefe.mailsorter.domain.StoredCredential;
+import dev.jefe.mailsorter.domain.model.Credential;
+import dev.jefe.mailsorter.domain.model.StoredCredential;
 
 import java.util.List;
 import java.util.Optional;

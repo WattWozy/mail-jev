@@ -2,12 +2,13 @@ package dev.jefe.mailsorter.application.service;
 
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
-import dev.jefe.mailsorter.application.port.in.ApplyCommand;
+import dev.jefe.mailsorter.application.port.in.dto.ApplyCommand;
 import dev.jefe.mailsorter.application.port.in.ApplyPlanUseCase;
-import dev.jefe.mailsorter.application.port.in.ApplyResult;
-import dev.jefe.mailsorter.application.port.in.Plan;
+import dev.jefe.mailsorter.application.port.in.dto.ApplyResult;
+import dev.jefe.mailsorter.application.port.in.dto.Plan;
 import dev.jefe.mailsorter.application.port.out.*;
-import dev.jefe.mailsorter.domain.Action;
+import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
+import dev.jefe.mailsorter.domain.model.Action;
 
 import java.util.*;
 import java.util.stream.Collectors;

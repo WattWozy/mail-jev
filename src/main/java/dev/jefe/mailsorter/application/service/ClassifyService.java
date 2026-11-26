@@ -2,14 +2,18 @@ package dev.jefe.mailsorter.application.service;
 
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
-import dev.jefe.mailsorter.application.port.in.ClassifyCommand;
+import dev.jefe.mailsorter.application.port.in.dto.ClassifyCommand;
 import dev.jefe.mailsorter.application.port.in.ClassifyUseCase;
-import dev.jefe.mailsorter.application.port.in.Plan;
+import dev.jefe.mailsorter.application.port.in.dto.Plan;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.port.out.ConnectionStore;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.PlanStore;
-import dev.jefe.mailsorter.domain.*;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.Email;
+import dev.jefe.mailsorter.domain.policy.PolicyEngine;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.time.Duration;

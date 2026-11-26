@@ -1,6 +1,6 @@
 package dev.jefe.mailsorter.application.service;
 
-import dev.jefe.mailsorter.domain.Classification;
+import dev.jefe.mailsorter.domain.model.Classification;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;

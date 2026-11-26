@@ -1,7 +1,7 @@
 package dev.jefe.mailsorter.application.port.out;
 
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Classification;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Classification;
 
 /** Driven port. Every action is recorded so it can be undone. */
 public interface AuditLog {

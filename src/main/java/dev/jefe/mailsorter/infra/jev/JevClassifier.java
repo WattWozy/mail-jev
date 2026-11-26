@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
 import dev.jefe.mailsorter.application.port.out.Classifier;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Classification;
-import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 
 import java.util.LinkedHashMap;

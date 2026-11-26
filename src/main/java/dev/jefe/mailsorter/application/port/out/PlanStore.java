@@ -1,6 +1,6 @@
 package dev.jefe.mailsorter.application.port.out;
 
-import dev.jefe.mailsorter.application.port.in.Plan;
+import dev.jefe.mailsorter.application.port.in.dto.Plan;
 
 import java.util.Optional;
 

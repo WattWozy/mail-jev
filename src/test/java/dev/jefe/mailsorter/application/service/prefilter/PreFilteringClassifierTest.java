@@ -3,9 +3,9 @@ package dev.jefe.mailsorter.application.service.prefilter;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule;
 import dev.jefe.mailsorter.application.service.prefilter.rules.ListUnsubscribeRule;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Classification;
-import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
+import dev.jefe.mailsorter.domain.model.Email;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

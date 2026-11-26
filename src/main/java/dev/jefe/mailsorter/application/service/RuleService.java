@@ -1,12 +1,12 @@
 package dev.jefe.mailsorter.application.service;
 
-import dev.jefe.mailsorter.application.port.in.AddRuleCommand;
+import dev.jefe.mailsorter.application.port.in.dto.AddRuleCommand;
 import dev.jefe.mailsorter.application.port.in.AddRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.DeleteRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.ListRulesUseCase;
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
-import dev.jefe.mailsorter.domain.Category;
+import dev.jefe.mailsorter.domain.model.Category;
 
 import java.util.List;
 import java.util.Locale;

@@ -1,10 +1,10 @@
 package dev.jefe.mailsorter.testsupport;
 
 import dev.jefe.mailsorter.application.exception.MailAccessException;
-import dev.jefe.mailsorter.application.port.out.MailOperation;
+import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
-import dev.jefe.mailsorter.domain.Email;
-import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.domain.model.Email;
+import dev.jefe.mailsorter.domain.model.EmailContent;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,7 +19,6 @@ public class FakeMailProvider implements MailProvider {
     public final List<String> processed = new ArrayList<>();
     public final List<String> restored = new ArrayList<>();
     public final Map<String, List<String>> labels = new HashMap<>();
-    public final Set<String> failOn = new HashSet<>();
     public final Set<String> failing = new HashSet<>();
     public final List<List<MailOperation>> applyCalls = new ArrayList<>();
 
@@ -110,7 +109,7 @@ public class FakeMailProvider implements MailProvider {
 
         for (MailOperation op : ops) {
             String id = op.emailId();
-            if (failOn.contains(id) || !inInbox.contains(id)) {
+            if (failing.contains(id) || !inInbox.contains(id)) {
                 failed.add(id);
                 continue;
             }

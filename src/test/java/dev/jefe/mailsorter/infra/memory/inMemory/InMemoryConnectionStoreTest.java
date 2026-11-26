@@ -1,5 +1,6 @@
 package dev.jefe.mailsorter.infra.memory.inMemory;
 
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryConnectionStore;
 import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 import org.junit.jupiter.api.Test;
 

@@ -2,8 +2,8 @@ package dev.jefe.mailsorter.infra.jev;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Email;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

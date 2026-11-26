@@ -9,7 +9,7 @@ import dev.jefe.mailsorter.application.service.ConnectService;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import java.util.Map;
 
-import dev.jefe.mailsorter.infra.memory.inMemory.InMemoryCredentialStore;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryCredentialStore;
 import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

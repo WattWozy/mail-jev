@@ -2,8 +2,8 @@ package dev.jefe.mailsorter.application;
 
 import dev.jefe.mailsorter.application.exception.ClassificationFailedException;
 import dev.jefe.mailsorter.application.port.out.*;
-import dev.jefe.mailsorter.domain.*;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
+import dev.jefe.mailsorter.domain.model.*;
 import dev.jefe.mailsorter.testsupport.FakeMailProvider;
 
 import java.util.*;

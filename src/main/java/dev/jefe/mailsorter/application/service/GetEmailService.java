@@ -4,7 +4,7 @@ import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.in.GetEmailUseCase;
 import dev.jefe.mailsorter.application.port.out.ConnectionStore;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
-import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.domain.model.EmailContent;
 
 public class GetEmailService implements GetEmailUseCase {
     private final ConnectionStore store;

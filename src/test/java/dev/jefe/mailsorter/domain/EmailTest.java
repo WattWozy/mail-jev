@@ -1,11 +1,11 @@
 package dev.jefe.mailsorter.domain;
 
+import dev.jefe.mailsorter.domain.model.Email;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
 
 class EmailTest {
     @Test

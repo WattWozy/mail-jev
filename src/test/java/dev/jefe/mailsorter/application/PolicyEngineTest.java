@@ -3,12 +3,12 @@ package dev.jefe.mailsorter.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Category;
-import dev.jefe.mailsorter.domain.Classification;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
 import java.util.Map;
 
-import dev.jefe.mailsorter.domain.PolicyEngine;
+import dev.jefe.mailsorter.domain.policy.PolicyEngine;
 import org.junit.jupiter.api.Test;
 
 class PolicyEngineTest {

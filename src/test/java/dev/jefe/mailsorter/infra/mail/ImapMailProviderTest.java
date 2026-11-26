@@ -6,7 +6,7 @@ import com.icegreen.greenmail.util.GreenMailUtil;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
-import dev.jefe.mailsorter.domain.Email;
+import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;

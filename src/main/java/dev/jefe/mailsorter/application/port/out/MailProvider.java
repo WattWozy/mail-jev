@@ -1,7 +1,8 @@
 package dev.jefe.mailsorter.application.port.out;
 
-import dev.jefe.mailsorter.domain.Email;
-import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
+import dev.jefe.mailsorter.domain.model.Email;
+import dev.jefe.mailsorter.domain.model.EmailContent;
 
 import java.util.List;
 import java.util.Set;

@@ -1,11 +1,11 @@
 package dev.jefe.mailsorter.infra.mail;
 
 import dev.jefe.mailsorter.application.exception.MailAccessException;
-import dev.jefe.mailsorter.application.port.out.MailOperation;
+import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
-import dev.jefe.mailsorter.domain.Action;
-import dev.jefe.mailsorter.domain.Email;
-import dev.jefe.mailsorter.domain.EmailContent;
+import dev.jefe.mailsorter.domain.model.Action;
+import dev.jefe.mailsorter.domain.model.Email;
+import dev.jefe.mailsorter.domain.model.EmailContent;
 import dev.jefe.mailsorter.infra.logging.AppLog;
 import jakarta.mail.*;
 import jakarta.mail.internet.ContentType;
