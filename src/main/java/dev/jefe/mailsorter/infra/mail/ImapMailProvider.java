@@ -53,16 +53,29 @@ public final class ImapMailProvider implements MailProvider {
     private final String accountKey;
     /** User folders filed into during this session; searched too so read/restore still find moved mail. */
     private final Set<String> userFolders = ConcurrentHashMap.newKeySet();
+    /**
+     * INBOX UIDs of the messages handed out by {@link #listUnprocessed}, by email id. Apply finds them by UID:
+     * some servers (GMX) return nothing for SEARCH HEADER Message-ID. Valid only for {@link #listedUidValidity}.
+     */
+    private final Map<String, Long> listedUids = new ConcurrentHashMap<>();
+    private volatile long listedUidValidity = -1;
+    private final boolean headerSearch;
 
     ImapMailProvider(Store store, String accountKey) {
-        this(store, "Archive", "Trash", accountKey);
+        this(store, "Archive", "Trash", accountKey, true);
     }
 
     ImapMailProvider(Store store, String archiveFolder, String trashFolder, String accountKey) {
+        this(store, archiveFolder, trashFolder, accountKey, true);
+    }
+
+    /** {@code headerSearch = false} simulates servers whose Message-ID header search finds nothing. */
+    ImapMailProvider(Store store, String archiveFolder, String trashFolder, String accountKey, boolean headerSearch) {
         this.store = store;
         this.archiveFolder = archiveFolder;
         this.trashFolder = trashFolder;
         this.accountKey = accountKey;
+        this.headerSearch = headerSearch;
     }
 
     @Override
@@ -147,6 +160,7 @@ public final class ImapMailProvider implements MailProvider {
                 structure.add(FetchProfile.Item.ENVELOPE);
                 structure.add(FetchProfile.Item.FLAGS);
                 structure.add(FetchProfile.Item.CONTENT_INFO);
+                structure.add(UIDFolder.FetchProfileItem.UID);
                 for (String header : HEADER_NAMES) {
                     structure.add(header);
                 }
@@ -159,9 +173,17 @@ public final class ImapMailProvider implements MailProvider {
                 inbox.fetch(latestSlice, content);
                 long t2b = System.nanoTime();
 
+                IMAPFolder uidInbox = (IMAPFolder) inbox;
+                long validity = uidInbox.getUIDValidity();
+                if (validity != listedUidValidity) {
+                    listedUids.clear();
+                    listedUidValidity = validity;
+                }
                 List<Email> emails = new ArrayList<>(count);
                 for (Message message : latestSlice) {
-                    emails.add(toEmail(message));
+                    Email email = toEmail(message);
+                    listedUids.put(email.id(), uidInbox.getUID(message));
+                    emails.add(email);
                 }
                 long t3 = System.nanoTime();
 
@@ -302,13 +324,16 @@ public final class ImapMailProvider implements MailProvider {
         throw ex;
     }
 
-    /** Resolves all ids with as few round trips as possible (one SEARCH + one FETCH). */
+    /**
+     * Resolves all ids with as few round trips as possible: listed messages by UID (works on every server),
+     * the rest by one Message-ID header SEARCH, and mails without a Message-ID by scanning unprocessed mail.
+     */
     private Map<String, Message> resolve(IMAPFolder inbox, List<MailOperation> ops) throws MessagingException {
-        Map<String, Message> found = new HashMap<>();
+        Map<String, Message> found = resolveByUid(inbox, ops);
 
         List<String> messageIds = ops.stream().map(MailOperation::emailId)
-                .filter(id -> !id.startsWith(FALLBACK_PREFIX)).distinct().toList();
-        if (!messageIds.isEmpty()) {
+                .filter(id -> !id.startsWith(FALLBACK_PREFIX) && !found.containsKey(id)).distinct().toList();
+        if (headerSearch && !messageIds.isEmpty()) {
             SearchTerm[] terms = messageIds.stream()
                     .map(id -> new HeaderTerm("Message-ID", id)).toArray(SearchTerm[]::new);
             Message[] hits = inbox.search(terms.length == 1 ? terms[0] : new OrTerm(terms));
@@ -323,7 +348,7 @@ public final class ImapMailProvider implements MailProvider {
         }
 
         // Rare: mails without a Message-ID. Only scan the still-unprocessed ones, not the whole inbox.
-        if (ops.stream().anyMatch(o -> o.emailId().startsWith(FALLBACK_PREFIX))) {
+        if (ops.stream().anyMatch(o -> o.emailId().startsWith(FALLBACK_PREFIX) && !found.containsKey(o.emailId()))) {
             Message[] candidates = inbox.search(new FlagTerm(new Flags(PROCESSED_FLAG), false));
             FetchProfile fp = new FetchProfile();
             fp.add(FetchProfile.Item.ENVELOPE);
@@ -332,6 +357,31 @@ public final class ImapMailProvider implements MailProvider {
             for (Message m : candidates) {
                 if (messageIdOf(m) == null) found.putIfAbsent(fallbackId(m), m);
             }
+        }
+        return found;
+    }
+
+    /** Listed messages by UID, each checked to still be the same email (a UID is reused only if UIDVALIDITY changes). */
+    private Map<String, Message> resolveByUid(IMAPFolder inbox, List<MailOperation> ops) throws MessagingException {
+        Map<String, Message> found = new HashMap<>();
+        if (inbox.getUIDValidity() != listedUidValidity) return found;
+
+        List<String> ids = ops.stream().map(MailOperation::emailId).filter(listedUids::containsKey).distinct().toList();
+        if (ids.isEmpty()) return found;
+
+        long[] uids = ids.stream().mapToLong(listedUids::get).toArray();
+        Message[] byUid = inbox.getMessagesByUID(uids);       // null where the UID is gone (moved, deleted)
+        Message[] present = Arrays.stream(byUid).filter(Objects::nonNull).toArray(Message[]::new);
+        FetchProfile fp = new FetchProfile();
+        fp.add(FetchProfile.Item.ENVELOPE);
+        fp.add("Message-ID");
+        inbox.fetch(present, fp);
+
+        for (int i = 0; i < ids.size(); i++) {
+            Message m = byUid[i];
+            if (m == null) continue;
+            String actual = messageIdOf(m) != null ? messageIdOf(m) : fallbackId(m);
+            if (ids.get(i).equals(actual)) found.put(ids.get(i), m);
         }
         return found;
     }

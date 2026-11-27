@@ -302,4 +302,55 @@ class ImapMailProviderTest {
         assertThat(failed.get("<gone@test>")).contains("not found in INBOX");
         assertThat(subjectsIn("Archive")).containsExactly("one");
     }
+
+    // -- servers whose header search finds nothing (seen on GMX) ---------------------
+
+    /** Behaves like GMX: SEARCH HEADER Message-ID returns no hits. */
+    private ImapMailProvider withoutHeaderSearch() throws MessagingException {
+        return new ImapMailProvider(rawStore(), "Archive", "Trash", "imap:gmx-like|me@example.com", false);
+    }
+
+    @Test
+    void listedMessagesAreFoundByUidWhenTheServersHeaderSearchFindsNothing() throws Exception {
+        deliver("<m1@test>", "news", "x", Map.of());
+        deliver("<m2@test>", "sofa", "x", Map.of());
+        deliver(null, "no id", "x", Map.of());
+        var gmxLike = withoutHeaderSearch();
+        String noId = gmxLike.listUnprocessed(10).stream()
+                .filter(e -> e.subject().equals("no id")).findFirst().orElseThrow().id();
+
+        var failed = gmxLike.applyAll(List.of(
+                new MailOperation("<m1@test>", Action.ARCHIVE),
+                new MailOperation("<m2@test>", Action.MOVE_TO_FOLDER, "Ikea"),
+                new MailOperation(noId, Action.MOVE_TO_TRASH)), "mail-sorter/review");
+
+        assertThat(failed).isEmpty();
+        assertThat(subjectsIn("INBOX")).isEmpty();
+        assertThat(subjectsIn("Archive")).containsExactly("news");
+        assertThat(subjectsIn("Ikea")).containsExactly("sofa");
+        assertThat(subjectsIn("Trash")).containsExactly("no id");
+    }
+
+    @Test
+    void aMessageThatWasNeverListedFallsBackToTheHeaderSearch() throws Exception {
+        deliver("<m1@test>", "news", "x", Map.of());
+
+        var failed = provider.applyAll(List.of(new MailOperation("<m1@test>", Action.ARCHIVE)), "mail-sorter/review");
+
+        assertThat(failed).isEmpty();
+        assertThat(subjectsIn("Archive")).containsExactly("news");
+    }
+
+    @Test
+    void aListedMessageThatWasMovedElsewhereMeanwhileIsReportedNotFound() throws Exception {
+        deliver("<m1@test>", "news", "x", Map.of());
+        var gmxLike = withoutHeaderSearch();
+        gmxLike.listUnprocessed(10);
+        provider.archive("<m1@test>");   // moved by someone else (another client, a filter, ...)
+
+        var failed = gmxLike.applyAll(List.of(new MailOperation("<m1@test>", Action.MOVE_TO_TRASH)), "mail-sorter/review");
+
+        assertThat(failed).containsOnlyKeys("<m1@test>");
+        assertThat(subjectsIn("Archive")).containsExactly("news");
+    }
 }
