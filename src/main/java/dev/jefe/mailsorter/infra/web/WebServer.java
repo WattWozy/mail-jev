@@ -28,12 +28,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class WebServer implements AutoCloseable {
@@ -98,7 +101,7 @@ public final class WebServer implements AutoCloseable {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
     }
 
-    // GET /api/activity?limit=50
+    // GET /api/activity?limit=50&since=2026-11-27T00:00:00Z
     private void handleActivity(HttpExchange exchange) throws IOException {
         try (exchange) {
             Response r;
@@ -107,7 +110,8 @@ public final class WebServer implements AutoCloseable {
             } else {
                 r = guarded(() -> {
                     int limit = queryInt(exchange, "limit", 50);
-                    List<Map<String, Object>> rows = activity.recent(limit).stream().map(WebServer::toJson).toList();
+                    Instant since = queryInstant(exchange, "since");
+                    List<Map<String, Object>> rows = activity.recent(since, limit).stream().map(WebServer::toJson).toList();
                     return new Response(200, rows);
                 });
             }
@@ -124,6 +128,22 @@ public final class WebServer implements AutoCloseable {
             }
             events.subscribe(exchange);
         }
+    }
+
+    private static Instant queryInstant(HttpExchange exchange, String name) {
+        String query = exchange.getRequestURI().getQuery(); // decoded: the UI may send %3A
+        if (query == null) return null;
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(name)) {
+                try {
+                    return Instant.parse(pair.substring(eq + 1));
+                } catch (DateTimeParseException e) {
+                    throw new IllegalArgumentException(name + " must be an ISO-8601 instant, e.g. 2026-11-27T00:00:00Z");
+                }
+            }
+        }
+        return null;
     }
 
     private static int queryInt(HttpExchange exchange, String name, int fallback) {
@@ -512,13 +532,22 @@ public final class WebServer implements AutoCloseable {
         }
     }
 
+    /** Only these paths are served from /web; anything else is 404, so no traversal is possible. */
+    private static final Pattern UI_FILE = Pattern.compile("/(app\\.css|js/[a-z-]+\\.js)");
+
     private void serveUi(HttpExchange exchange) throws IOException {
-        try (exchange; InputStream page = WebServer.class.getResourceAsStream("/web/index.html")) {
-            if (!"/".equals(exchange.getRequestURI().getPath()) || page == null) {
+        String path = exchange.getRequestURI().getPath();
+        String file = "/".equals(path) ? "/index.html" : UI_FILE.matcher(path).matches() ? path : null;
+        try (exchange; InputStream page = file == null ? null : WebServer.class.getResourceAsStream("/web" + file)) {
+            if (page == null) {
                 send(exchange, 404, "text/plain", "not found".getBytes(StandardCharsets.UTF_8));
                 return;
             }
-            send(exchange, 200, "text/html; charset=utf-8", page.readAllBytes());
+            String type = file.endsWith(".css") ? "text/css; charset=utf-8"
+                    : file.endsWith(".js") ? "text/javascript; charset=utf-8"
+                    : "text/html; charset=utf-8";
+            exchange.getResponseHeaders().add("Cache-Control", "no-cache");
+            send(exchange, 200, type, page.readAllBytes());
         }
     }
 

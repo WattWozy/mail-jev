@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="dark">
     <title>Mail Sorter</title>
     <script>
+        // Set the theme before first paint to avoid a flash.
         (() => {
             try {
                 const saved = localStorage.getItem('mailsorter.theme');
@@ -14,759 +15,60 @@
                     : 'dark';
                 const theme = (saved === 'light' || saved === 'dark') ? saved : preferred;
                 document.documentElement.setAttribute('data-theme', theme);
-                const meta = document.querySelector('meta[name="color-scheme"]');
-                if (meta) meta.setAttribute('content', theme);
+                document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', theme);
             } catch (_) {
                 document.documentElement.setAttribute('data-theme', 'dark');
             }
         })();
     </script>
-    <style>
-        :root,
-        :root[data-theme="dark"] {
-            --bg-app: #131314;
-            --bg-surface: #1e1f20;
-            --bg-surface-elevated: #282a2c;
-            --bg-control: #252729;
-            --bg-control-hover: #303336;
-            --bg-row-hover: #232527;
-            --bg-row-selected: #1a283b;
-
-            --text-primary: #e3e3e3;
-            --text-secondary: #9aa0a6;
-            --text-muted: #757b82;
-            --text-inverse: #ffffff;
-
-            --border-subtle: #2e3033;
-            --border-strong: #3c4043;
-            --focus-ring: #8ab4f8;
-
-            --accent-primary: #8ab4f8;
-            --accent-primary-bg: rgba(138, 180, 248, 0.14);
-            --accent-primary-border: rgba(138, 180, 248, 0.35);
-
-            --status-ok-bg: rgba(129, 201, 149, 0.12);
-            --status-ok-border: rgba(129, 201, 149, 0.32);
-            --status-ok-text: #81c995;
-
-            --status-warn-bg: rgba(253, 214, 99, 0.12);
-            --status-warn-border: rgba(253, 214, 99, 0.32);
-            --status-warn-text: #fdd663;
-
-            --status-err-bg: rgba(242, 139, 130, 0.12);
-            --status-err-border: rgba(242, 139, 130, 0.34);
-            --status-err-text: #f28b82;
-
-            --status-info-bg: rgba(138, 180, 248, 0.12);
-            --status-info-border: rgba(138, 180, 248, 0.32);
-            --status-info-text: #8ab4f8;
-
-            --badge-archive: #1e8e3e;
-            --badge-trash: #c5221f;
-            --badge-keep: #5f6368;
-            --badge-review: #b06000;
-
-            --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
-        }
-
-        :root[data-theme="light"] {
-            --bg-app: #f8f9fa;
-            --bg-surface: #ffffff;
-            --bg-surface-elevated: #f1f3f4;
-            --bg-control: #ffffff;
-            --bg-control-hover: #f1f3f4;
-            --bg-row-hover: #f8f9fa;
-            --bg-row-selected: #e8f0fe;
-
-            --text-primary: #202124;
-            --text-secondary: #5f6368;
-            --text-muted: #80868b;
-            --text-inverse: #ffffff;
-
-            --border-subtle: #dadce0;
-            --border-strong: #bdc1c6;
-            --focus-ring: #1a73e8;
-
-            --accent-primary: #1a73e8;
-            --accent-primary-bg: rgba(26, 115, 232, 0.1);
-            --accent-primary-border: rgba(26, 115, 232, 0.35);
-
-            --status-ok-bg: #e6f4ea;
-            --status-ok-border: #ceead6;
-            --status-ok-text: #137333;
-
-            --status-warn-bg: #fef7e0;
-            --status-warn-border: #feefc3;
-            --status-warn-text: #b06000;
-
-            --status-err-bg: #fce8e6;
-            --status-err-border: #fad2cf;
-            --status-err-text: #c5221f;
-
-            --status-info-bg: #e8f0fe;
-            --status-info-border: #d2e3fc;
-            --status-info-text: #1967d2;
-
-            --badge-archive: #1e8e3e;
-            --badge-trash: #c5221f;
-            --badge-keep: #5f6368;
-            --badge-review: #b06000;
-
-            --shadow-subtle: 0 1px 2px rgba(60, 64, 67, 0.12);
-        }
-
-        @keyframes fadeSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-4px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-                transform: translateY(0);
-            }
-            to {
-                opacity: 0;
-                transform: translateY(-3px);
-            }
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        *, *::before, *::after {
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: "Google Sans", Roboto, system-ui, -apple-system, sans-serif;
-            max-width: 980px;
-            margin: 2rem auto;
-            padding: 0 1rem 2.5rem;
-            background: var(--bg-app);
-            color: var(--text-primary);
-            line-height: 1.45;
-            transition: background-color 180ms ease, color 180ms ease;
-        }
-
-        header.top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: .75rem 1rem;
-            margin-bottom: 1.1rem;
-        }
-
-        header.top-bar h1 {
-            margin: 0;
-            font-size: 1.45rem;
-            font-weight: 500;
-            letter-spacing: -0.01em;
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: .85rem 1rem;
-        }
-
-        .stats-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .85rem;
-            font-size: .85rem;
-            color: var(--text-secondary);
-        }
-
-        .stats-bar strong {
-            color: var(--text-primary);
-            font-weight: 600;
-        }
-
-        .theme-toggle {
-            display: inline-flex;
-            align-items: center;
-            gap: .4rem;
-            padding: .28rem .65rem;
-            font-size: .8rem;
-            font-weight: 500;
-            border-radius: 999px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-secondary);
-            box-shadow: var(--shadow-subtle);
-            transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-        }
-
-        .theme-toggle:hover:not(:disabled) {
-            background: var(--bg-control-hover);
-            border-color: var(--border-strong);
-            color: var(--text-primary);
-        }
-
-        fieldset, details.rules-panel {
-            margin-bottom: 1rem;
-            border: 1px solid var(--border-subtle);
-            border-radius: 8px;
-            background: var(--bg-surface);
-            box-shadow: var(--shadow-subtle);
-            transition: background-color 180ms ease, border-color 180ms ease;
-        }
-
-        fieldset {
-            padding: .65rem .9rem .85rem;
-        }
-
-        details.rules-panel {
-            padding: .55rem .9rem .75rem;
-        }
-
-        details.rules-panel summary {
-            cursor: pointer;
-            color: var(--text-secondary);
-            font-size: .9rem;
-            font-weight: 500;
-            user-select: none;
-            transition: color 150ms ease;
-        }
-
-        details.rules-panel summary:hover,
-        details.rules-panel[open] summary {
-            color: var(--text-primary);
-        }
-
-        details.rules-panel[open] summary {
-            margin-bottom: .65rem;
-        }
-
-        details.rules-panel[open] > .rule-form,
-        details.rules-panel[open] > .rules-list {
-            animation: fadeSlideIn 180ms ease-out both;
-        }
-
-        .rule-form {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: .45rem;
-            margin-bottom: .65rem;
-        }
-
-        .rules-list {
-            max-height: 180px;
-            overflow-y: auto;
-        }
-
-        .rules-list table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: .84rem;
-        }
-
-        .rules-list td, .rules-list th {
-            padding: .35rem .45rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border-subtle);
-        }
-
-        .rules-list th {
-            color: var(--text-secondary);
-            font-weight: 500;
-        }
-
-        legend {
-            color: var(--text-secondary);
-            font-size: .84rem;
-            font-weight: 500;
-            padding: 0 .35rem;
-        }
-
-        label {
-            display: inline-block;
-            margin: .25rem .75rem .25rem 0;
-            font-size: .88rem;
-            color: var(--text-secondary);
-        }
-
-        input, select, button {
-            font-family: inherit;
-            background: var(--bg-control);
-            color: var(--text-primary);
-            border: 1px solid var(--border-strong);
-            border-radius: 6px;
-            padding: .34rem .58rem;
-            font-size: .88rem;
-            transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
-        }
-
-        input:focus-visible,
-        select:focus-visible,
-        button:focus-visible,
-        summary:focus-visible {
-            outline: 2px solid var(--focus-ring);
-            outline-offset: 1px;
-        }
-
-        button {
-            cursor: pointer;
-            font-weight: 500;
-        }
-
-        button:hover:not(:disabled) {
-            background: var(--bg-control-hover);
-            border-color: var(--text-secondary);
-        }
-
-        button:disabled {
-            opacity: .5;
-            cursor: not-allowed;
-        }
-
-        button.active-mode {
-            background: var(--badge-archive);
-            border-color: var(--badge-archive);
-            color: var(--text-inverse);
-        }
-
-        button.active-mode:hover:not(:disabled) {
-            filter: brightness(1.06);
-        }
-
-        button.btn-sm {
-            padding: .18rem .45rem;
-            font-size: .78rem;
-            border-radius: 5px;
-        }
-
-        .mode-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: .6rem;
-            margin-top: .6rem;
-            padding-top: .6rem;
-            border-top: 1px solid var(--border-subtle);
-        }
-
-        .autopilot-status {
-            font-size: .84rem;
-            color: var(--text-secondary);
-            margin-left: auto;
-            transition: color 160ms ease;
-        }
-
-        .autopilot-status.live {
-            color: var(--status-ok-text);
-            font-weight: 500;
-        }
-
-        table.main-table {
-            border-collapse: collapse;
-            width: 100%;
-            table-layout: fixed;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: var(--shadow-subtle);
-            transition: background-color 180ms ease, border-color 180ms ease;
-        }
-
-        table.main-table th,
-        table.main-table td {
-            border-bottom: 1px solid var(--border-subtle);
-            padding: .46rem .5rem;
-            text-align: left;
-            font-size: .88rem;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            transition: background-color 140ms ease, border-color 180ms ease;
-        }
-
-        table.main-table th {
-            color: var(--text-secondary);
-            font-weight: 500;
-            font-size: .82rem;
-            background: var(--bg-surface-elevated);
-        }
-
-        table.main-table tbody tr {
-            animation: fadeSlideIn 160ms ease-out both;
-        }
-
-        table.main-table tbody tr:hover td {
-            background: var(--bg-row-hover);
-        }
-
-        table.main-table tbody tr.selected td {
-            background: var(--bg-row-selected);
-        }
-
-        .col-action  { width: 142px; }
-        .col-from    { width: 195px; }
-        .col-subject { width: 25%; }
-        .col-cat     { width: 120px; }
-        .col-reason  { width: auto; }
-
-        .badge {
-            padding: .14rem .58rem;
-            border-radius: 999px;
-            font-size: .76rem;
-            font-weight: 500;
-            letter-spacing: 0.01em;
-            color: var(--text-inverse);
-            white-space: nowrap;
-            cursor: pointer;
-            user-select: none;
-            display: inline-block;
-            transition: transform 120ms ease, filter 140ms ease, opacity 140ms ease, background-color 150ms ease;
-        }
-
-        .badge:hover {
-            filter: brightness(1.08);
-            transform: translateY(-0.5px);
-        }
-
-        .badge:active {
-            transform: scale(0.97);
-        }
-
-        .badge.locked {
-            cursor: not-allowed;
-            opacity: .6;
-        }
-
-        .badge.locked:hover {
-            filter: none;
-            transform: none;
-        }
-
-        .badge.static-badge {
-            cursor: default;
-        }
-
-        .badge.static-badge:hover {
-            filter: none;
-            transform: none;
-        }
-
-        .ARCHIVE { background: var(--badge-archive); }
-        .MOVE_TO_TRASH { background: var(--badge-trash); }
-        .MOVE_TO_FOLDER { background: #5b4fc7; }
-        .KEEP { background: var(--badge-keep); }
-        .FLAG_FOR_REVIEW { background: var(--badge-review); }
-
-        .when {
-            color: var(--muted, #888);
-            font-variant-numeric: tabular-nums;
-            margin-right: .4rem;
-            white-space: nowrap;
-        }
-
-        .src-tag {
-            display: inline-block;
-            font-size: .7rem;
-            font-weight: 500;
-            padding: .06rem .38rem;
-            border-radius: 4px;
-            background: var(--bg-control);
-            border: 1px solid var(--border-strong);
-            color: var(--text-secondary);
-            margin-right: .38rem;
-            vertical-align: middle;
-        }
-
-        .src-tag.rule {
-            color: var(--accent-primary);
-            background: var(--accent-primary-bg);
-            border-color: var(--accent-primary-border);
-        }
-
-        /* Standardized notification banner */
-        #msg {
-            display: none;
-            margin: .75rem 0;
-            padding: .55rem .8rem;
-            border-radius: 8px;
-            border: 1px solid transparent;
-            font-size: .88rem;
-            font-weight: 450;
-            opacity: 0;
-            transition: opacity 180ms ease, transform 180ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-        }
-
-        #msg.visible {
-            display: block;
-            opacity: 1;
-            animation: fadeSlideIn 170ms ease-out both;
-        }
-
-        #msg.fading-out {
-            display: block;
-            opacity: 0;
-            animation: fadeOut 150ms ease-in forwards;
-        }
-
-        #msg.notice-info {
-            background: var(--status-info-bg);
-            border-color: var(--status-info-border);
-            color: var(--status-info-text);
-        }
-
-        #msg.notice-ok {
-            background: var(--status-ok-bg);
-            border-color: var(--status-ok-border);
-            color: var(--status-ok-text);
-        }
-
-        #msg.notice-warn {
-            background: var(--status-warn-bg);
-            border-color: var(--status-warn-border);
-            color: var(--status-warn-text);
-        }
-
-        #msg.notice-err {
-            background: var(--status-err-bg);
-            border-color: var(--status-err-border);
-            color: var(--status-err-text);
-        }
-
-        #summary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .45rem .9rem;
-            margin: .65rem 0;
-            font-size: .85rem;
-            color: var(--text-secondary);
-        }
-
-        #summary span {
-            animation: fadeSlideIn 150ms ease-out both;
-        }
-
-        .custom-only { display: none; }
-
-        #spinner {
-            display: none;
-            align-items: center;
-            gap: .6rem;
-            margin: .75rem 0;
-            color: var(--text-secondary);
-            font-size: .9rem;
-            animation: fadeSlideIn 150ms ease-out both;
-        }
-
-        #spinner.visible { display: flex; }
-
-        .spinner-ring {
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--border-strong);
-            border-top-color: var(--accent-primary);
-            border-radius: 50%;
-            animation: spin .7s linear infinite;
-        }
-
-        /* Expanded row that hosts the preview */
-        #rows tr.detail-row:hover td,
-        #rows tr.detail-row td {
-            padding: 0;
-            background: var(--bg-surface-elevated);
-            white-space: normal;
-            overflow: visible;
-        }
-
-        /* ── Email preview ─────────────────────────────── */
-        #preview {
-            display: none;
-            margin: 0;
-            border: none;
-            background: var(--bg-surface-elevated);
-            overflow: hidden;
-            opacity: 0;
-            transition: opacity 170ms ease;
-        }
-
-        #preview.visible {
-            display: block;
-            opacity: 1;
-            animation: fadeSlideIn 170ms ease-out both;
-        }
-
-        #preview-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            padding: .75rem 1rem;
-            border-bottom: 1px solid var(--border-subtle);
-            background: var(--bg-surface);
-        }
-
-        #preview-meta { flex: 1; min-width: 0; }
-        #preview-meta .from { font-weight: 600; color: var(--text-primary); margin-bottom: .2rem; }
-        #preview-meta .subject { color: var(--text-primary); margin-bottom: .15rem; font-size: .9rem; }
-        #preview-meta .date { font-size: .8rem; color: var(--text-secondary); }
-
-        #preview-actions {
-            display: flex;
-            align-items: center;
-            gap: .4rem;
-            flex-shrink: 0;
-        }
-
-        #preview-close {
-            font-size: 1rem;
-            line-height: 1;
-            padding: .25rem .55rem;
-        }
-
-        #preview-body {
-            margin: 0;
-            padding: 1rem;
-            max-height: 420px;
-            overflow: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-            font-size: .84rem;
-            line-height: 1.48;
-            color: var(--text-primary);
-            background: var(--bg-app);
-            transition: background-color 180ms ease, color 180ms ease;
-        }
-
-        #preview-body.empty {
-            color: var(--text-muted);
-            font-style: italic;
-            font-family: inherit;
-        }
-
-        #preview-loading {
-            padding: 1.5rem;
-            text-align: center;
-            color: var(--text-secondary);
-            font-size: .88rem;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="/app.css">
+    <script type="module" src="/js/main.js"></script>
 </head>
 <body>
 <header class="top-bar">
     <h1>Mail Sorter</h1>
     <div class="header-right">
+        <select id="account" title="Switch account"></select>
         <div class="stats-bar" id="stats-bar">
-            <span>Sorted: <strong id="stat-total">0</strong></span>
-            <span>Rule hits: <strong id="stat-rule-pct">0%</strong></span>
-            <span>JEV: <strong id="stat-jev">0</strong></span>
-            <span>Overrides: <strong id="stat-manual">0</strong></span>
+            <span title="Emails sorted so far">Sorted <strong id="stat-total">0</strong></span>
+            <span title="Sorted by your rules">By rules <strong id="stat-rule-pct">0%</strong></span>
+            <span title="Sorted by AI">By AI <strong id="stat-ai">0</strong></span>
+            <span title="Actions you changed before applying">Changed by you <strong id="stat-manual">0</strong></span>
         </div>
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle light/dark theme">
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme">
             <span id="theme-icon" aria-hidden="true">☀</span>
             <span id="theme-label">Light</span>
         </button>
     </div>
 </header>
 
-<fieldset>
-    <legend>1. Connect</legend>
+<section class="card action-bar">
+    <!-- Preview and Apply share one slot, so the next click is always in the same place. -->
+    <div class="group" id="idle-actions">
+        <button id="preview-btn" class="primary" type="button" disabled>Preview</button>
+        <span class="hint">next <input id="limit" class="num" type="number" value="10" min="1" title="How many emails to look at"> emails</span>
+    </div>
+    <div class="group" id="plan-actions" hidden>
+        <button id="apply" class="primary" type="button">Apply</button>
+        <button id="discard" type="button">Discard</button>
+        <span class="hint" id="summary"></span>
+    </div>
 
-    <label>Provider
-        <select id="provider">
-            <option value="gmail">Gmail</option>
-            <option value="gmx">GMX</option>
-            <option value="outlook">Outlook / Office 365</option>
-            <option value="yahoo">Yahoo</option>
-            <option value="icloud">iCloud</option>
-            <option value="">Custom</option>
+    <div class="group autopilot">
+        <label class="switch" title="Sort new mail automatically in the background">
+            <input id="autopilot-toggle" type="checkbox" disabled> Autopilot
+        </label>
+        <span class="hint">every</span>
+        <select id="autopilot-interval" title="How often autopilot runs">
+            <option value="60">1 min</option>
+            <option value="120" selected>2 min</option>
+            <option value="300">5 min</option>
+            <option value="900">15 min</option>
+            <option value="1800">30 min</option>
+            <option value="3600">1 hour</option>
         </select>
-    </label>
-
-    <label class="custom-only">Host <input id="host" value="127.0.0.1"></label>
-    <label class="custom-only">Port <input id="port" type="number" value="3143" size="5"></label>
-    <label>User <input id="user" value="" autocomplete="username"></label>
-    <label>Password <input id="pass" type="password" value="" autocomplete="current-password"></label>
-    <label class="custom-only"><input id="ssl" type="checkbox"> SSL</label>
-
-    <button id="connect">Connect</button>
-</fieldset>
-
-<details class="rules-panel" id="rules-panel">
-    <summary>Prefilter Rules (<span id="rules-count">0</span>) for <span class="active-account">no account</span> — deterministic rules run before JEV</summary>
-    <div class="rule-form">
-        <select id="rule-field" title="Match field">
-            <option value="FROM_DOMAIN">From domain</option>
-            <option value="FROM_ADDRESS">From address</option>
-            <option value="SUBJECT_CONTAINS">Subject contains</option>
-        </select>
-        <input id="rule-pattern" placeholder="e.g. newsletter.example.com" size="26">
-        <select id="rule-action" title="Action when matched">
-            <option value="ARCHIVE">ARCHIVE</option>
-            <option value="MOVE_TO_TRASH">MOVE_TO_TRASH</option>
-            <option value="KEEP">KEEP</option>
-            <option value="FLAG_FOR_REVIEW">FLAG_FOR_REVIEW</option>
-        </select>
-        <input id="rule-category" placeholder="Category (Rule)" size="14">
-        <select id="rule-folder" title="File matching mail into one of your folders. Overrides the action.">
-            <option value="">→ no folder (use the action)</option>
-        </select>
-        <button id="add-rule-btn" type="button">Add rule</button>
     </div>
-    <div class="rules-list">
-        <table>
-            <thead><tr><th>Match</th><th>Pattern</th><th>Action</th><th>Category</th><th>Folder</th><th></th></tr></thead>
-            <tbody id="rules-tbody"></tbody>
-        </table>
-    </div>
-</details>
-
-<details class="rules-panel" id="folders-panel">
-    <summary>Folders (<span id="folders-count">0</span>) for <span class="active-account">no account</span> — jev sorts matching mail into these</summary>
-    <div class="rule-form">
-        <input id="folder-name" placeholder="Folder name, e.g. Travel promotions" size="26">
-        <input id="folder-description" maxlength="300" size="60"
-               placeholder="What belongs here, in one sentence: e.g. Flight, hotel and holiday deals">
-        <button id="add-folder-btn" type="button">Add folder</button>
-    </div>
-    <div class="rules-list">
-        <table>
-            <thead><tr><th>Folder</th><th>Description</th><th></th></tr></thead>
-            <tbody id="folders-tbody"></tbody>
-        </table>
-    </div>
-</details>
-
-<fieldset>
-    <legend>2. Plan &amp; Apply</legend>
-    <select id="account">Saved profiles</select>
-    <label>Batch size <input id="limit" type="number" value="10" size="4"></label>
-    <button id="preview-btn" disabled>Preview (creates a plan)</button>
-    <button id="apply" disabled>Apply plan to mailbox</button>
-
-    <div class="mode-row">
-        <button id="autopilot-toggle" type="button" disabled>Start Autopilot</button>
-        <label>Every (sec) <input id="autopilot-interval" type="number" value="120" min="10" size="5"></label>
-        <button id="activity-feed-btn" type="button">Recent Activity</button>
-        <span id="autopilot-status" class="autopilot-status">Autopilot: Off</span>
-    </div>
-</fieldset>
+</section>
 
 <div id="spinner">
     <div class="spinner-ring"></div>
@@ -774,7 +76,11 @@
 </div>
 
 <div id="msg" role="status" aria-live="polite"></div>
-<div id="summary"></div>
+
+<div class="table-title">
+    <strong id="table-title">Preview</strong>
+    <span id="table-hint"></span>
+</div>
 <table class="main-table">
     <thead>
     <tr>
@@ -782,7 +88,7 @@
         <th class="col-from">From</th>
         <th class="col-subject">Subject</th>
         <th class="col-cat">Category</th>
-        <th class="col-reason">Reason</th>
+        <th class="col-reason">Why</th>
     </tr>
     </thead>
     <tbody id="rows"></tbody>
@@ -799,932 +105,108 @@
                 <div class="date" id="preview-date"></div>
             </div>
             <div id="preview-actions">
-                <button id="promote-rule-btn" class="btn-sm" type="button" style="display:none;">+ Rule from sender</button>
-                <button id="preview-close" title="Close preview">✕</button>
+                <button id="promote-rule-btn" class="btn-sm" type="button" hidden>+ Rule from sender</button>
+                <button id="preview-close" type="button" title="Close preview">✕</button>
             </div>
         </div>
-        <div id="preview-loading" style="display:none;">Loading…</div>
+        <div id="preview-loading" hidden>Loading…</div>
         <pre id="preview-body" class="empty">Select a row to preview the email (plain text only).</pre>
     </div>
 </div>
 
-<script>
-    const $ = id => document.getElementById(id);
-
-    // holds the plan currently shown in the table
-    let currentPlanId = null;
-    // user overrides: { emailId: "KEEP" | "ARCHIVE" | ... }
-    let overrides = {};
-    // currently open email id (for highlighting / stale-response check)
-    let selectedEmailId = null;
-    let selectedFrom = '';
-    let selectedCurrentAction = 'KEEP';
-    // the <tr> that hosts the preview while it is open
-    let detailRow = null;
-    // autopilot state
-    let autopilotEnabled = false;
-    let viewingActivityFeed = false;
-    // notification fade timer
-    let msgFadeTimer = null;
-
-    const ACTIONS = ['KEEP', 'FLAG_FOR_REVIEW', 'ARCHIVE', 'MOVE_TO_TRASH'];
-
-    // Only entries the plan routed to a folder can cycle back to MOVE_TO_FOLDER.
-    function actionsFor(folder) {
-        return folder ? ['MOVE_TO_FOLDER', ...ACTIONS] : ACTIONS;
-    }
-
-    function actionLabel(action, folder) {
-        return action === 'MOVE_TO_FOLDER' && folder ? '→ ' + folder : action;
-    }
-
-    function setBadge(badge, action, folder) {
-        badge.dataset.action = action;
-        badge.textContent = actionLabel(action, folder);
-        badge.classList.remove(...ACTIONS, 'MOVE_TO_FOLDER');
-        badge.classList.add(action);
-    }
-
-    const providers = {
-        gmx:     { host: 'imap.gmx.com',          port: 993, ssl: true },
-        gmail:   { host: 'imap.gmail.com',        port: 993, ssl: true },
-        outlook: { host: 'outlook.office365.com', port: 993, ssl: true },
-        yahoo:   { host: 'imap.mail.yahoo.com',   port: 993, ssl: true },
-        icloud:  { host: 'imap.mail.me.com',      port: 993, ssl: true },
-    };
-
-    // ── Theme toggle ────────────────────────────────────
-
-    function currentTheme() {
-        return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    }
-
-    function applyTheme(theme) {
-        const normalized = theme === 'light' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', normalized);
-        const meta = document.querySelector('meta[name="color-scheme"]');
-        if (meta) meta.setAttribute('content', normalized);
-
-        const isDark = normalized === 'dark';
-        $('theme-icon').textContent = isDark ? '☀' : '☾';
-        $('theme-label').textContent = isDark ? 'Light' : 'Dark';
-        $('theme-toggle').setAttribute(
-            'aria-label',
-            isDark ? 'Switch to light theme' : 'Switch to dark theme'
-        );
-
-        try { localStorage.setItem('mailsorter.theme', normalized); } catch (_) { /* storage optional */ }
-    }
-
-    $('theme-toggle').onclick = () => {
-        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
-    };
-    applyTheme(currentTheme());
-
-    function updateCustomVisibility() {
-        const isCustom = !$('provider').value;
-        document.querySelectorAll('.custom-only').forEach(el => {
-            el.style.display = isCustom ? 'inline-block' : 'none';
-        });
-    }
-
-    $('provider').onchange = () => {
-        const p = providers[$('provider').value];
-        if (p) {
-            $('host').value = p.host;
-            $('port').value = p.port;
-            $('ssl').checked = p.ssl;
-        }
-        updateCustomVisibility();
-    };
-    updateCustomVisibility();
-
-    function setLoading(on, text = 'Working…') {
-        $('spinner').classList.toggle('visible', on);
-        $('spinner-text').textContent = text;
-        $('connect').disabled = on;
-        const canManual = !on && !autopilotEnabled && !!$('preview-btn').dataset.enabled;
-        $('preview-btn').disabled = !canManual;
-        $('apply').disabled = on || autopilotEnabled || !$('apply').dataset.enabled;
-    }
-
-    function enablePreview(ok) {
-        $('preview-btn').dataset.enabled = ok ? '1' : '';
-        $('autopilot-toggle').disabled = !ok && !autopilotEnabled;
-        if (!ok) {
-            $('preview-btn').disabled = true;
-        } else if (!$('spinner').classList.contains('visible') && !autopilotEnabled) {
-            $('preview-btn').disabled = false;
-        }
-    }
-
-    function enableApply(ok) {
-        $('apply').dataset.enabled = ok ? '1' : '';
-        if (!ok) {
-            $('apply').disabled = true;
-        } else if (!$('spinner').classList.contains('visible') && !autopilotEnabled) {
-            $('apply').disabled = false;
-        }
-    }
-
-    async function api(path, body, method = 'POST') {
-        const opts = { method };
-        if (body !== undefined) {
-            opts.headers = { 'Content-Type': 'application/json' };
-            opts.body = JSON.stringify(body);
-        }
-        const res = await fetch(path, opts);
-        let data = {};
-        try { data = await res.json(); } catch (_) { /* non-JSON error body */ }
-        if (!res.ok) throw new Error(data.error || res.statusText);
-        return data;
-    }
-
-    function show(text, isError = false, severity = null) {
-        const el = $('msg');
-        clearTimeout(msgFadeTimer);
-
-        if (!text) {
-            if (!el.classList.contains('visible')) return;
-            el.classList.remove('visible');
-            el.classList.add('fading-out');
-            msgFadeTimer = setTimeout(() => {
-                el.className = '';
-                el.textContent = '';
-            }, 150);
-            return;
-        }
-
-        let level = severity;
-        if (!level) {
-            if (isError) {
-                level = 'err';
-            } else if (/failure\(s\)|no persisted activity/i.test(text)) {
-                level = 'warn';
-            } else if (
-                text.startsWith('Connected') ||
-                text.startsWith('Applied') ||
-                text.startsWith('Autopilot enabled') ||
-                text.endsWith('saved.') ||
-                text.endsWith('removed.') ||
-                text.startsWith('Rule created:')
-            ) {
-                level = 'ok';
-            } else {
-                level = 'info';
-            }
-        }
-
-        el.textContent = text;
-        el.className = `notice-${level} visible`;
-    }
-
-    function cell(row, text) {
-        const td = document.createElement('td');
-        td.textContent = text ?? '';
-        td.title = text ?? '';
-        row.appendChild(td);
-        return td;
-    }
-
-    function renderSummary(counts) {
-        $('summary').replaceChildren(...Object.entries(counts).map(([action, n]) => {
-            const s = document.createElement('span');
-            s.textContent = action + ': ' + n;
-            return s;
-        }));
-    }
-
-    function updateSummaryFromTable() {
-        const counts = {};
-        document.querySelectorAll('#rows .badge').forEach(b => {
-            const a = b.dataset.action || b.textContent;
-            counts[a] = (counts[a] || 0) + 1;
-        });
-        renderSummary(counts);
-    }
-
-    // ── Stats & Activity Feed (SQLite backed) ───────────
-
-    async function loadStats() {
-        try {
-            const res = await fetch('/api/stats');
-            if (!res.ok) return;
-            const s = await res.json();
-            const total = s.totalSorted ?? s.total ?? 0;
-            const ruleHits = s.ruleHits ?? s.rules ?? 0;
-            const jevHits = s.jevHits ?? s.jev ?? 0;
-            const manualHits = s.manualOverrides ?? s.manual ?? 0;
-            const pct = total > 0 ? Math.round((ruleHits / total) * 100) : 0;
-
-            $('stat-total').textContent = total.toLocaleString();
-            $('stat-rule-pct').textContent = `${pct}% (${ruleHits.toLocaleString()})`;
-            $('stat-jev').textContent = jevHits.toLocaleString();
-            $('stat-manual').textContent = manualHits.toLocaleString();
-        } catch (_) { /* ignore transient stats errors */ }
-    }
-
-    async function loadActivityFeed() {
-        viewingActivityFeed = true;
-        currentPlanId = null;
-        overrides = {};
-        closePreview();
-        enableApply(false);
-        $('summary').replaceChildren();
-
-        try {
-            const res = await fetch('/api/activity?limit=50');
-            if (!res.ok) throw new Error(`Failed to load activity (${res.status})`);
-            const items = await res.json();
-            const list = Array.isArray(items) ? items : (items.entries || []);
-
-            $('rows').replaceChildren(...list.map(e => {
-                const tr = document.createElement('tr');
-                const action = e.action || 'KEEP';
-
-                const badge = document.createElement('span');
-                badge.className = 'badge static-badge';
-                setBadge(badge, action, e.folder);
-                const actionCell = document.createElement('td');
-                actionCell.appendChild(badge);
-                tr.appendChild(actionCell);
-
-                cell(tr, e.from ?? e.fromAddr ?? '');
-                cell(tr, e.subject ?? '');
-                cell(tr, e.category ?? '');
-
-                const reasonCell = document.createElement('td');
-                const src = (e.source || e.classificationSource || '').toUpperCase();
-                if (src) {
-                    const tag = document.createElement('span');
-                    tag.className = 'src-tag' + (src === 'RULE' ? ' rule' : '');
-                    tag.textContent = src;
-                    reasonCell.appendChild(tag);
-                }
-                const ts = e.timestamp || e.createdAt;
-                if (ts) {
-                    const when = document.createElement('span');
-                    when.className = 'when';
-                    when.textContent = new Date(ts).toLocaleString([], {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-                    reasonCell.prepend(when);
-                }
-                reasonCell.appendChild(document.createTextNode(e.reason ?? ''));
-                reasonCell.title = reasonCell.textContent;
-                tr.appendChild(reasonCell);
-
-                return tr;
-            }));
-
-            show(list.length
-                ? `Showing ${list.length} recent persisted actions from SQLite.`
-                : 'No persisted activity yet.');
-        } catch (err) {
-            show(err.message, true);
-        }
-    }
-
-    $('activity-feed-btn').onclick = loadActivityFeed;
-
-    // ── Prefilter Rules (SQLite backed) ─────────────────
-
-    function extractDomain(fromStr) {
-        const match = (fromStr || '').match(/@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-        return match ? match[1].toLowerCase() : '';
-    }
-
-    function renderRules(rules) {
-        const list = Array.isArray(rules) ? rules : [];
-        $('rules-count').textContent = list.length;
-
-        $('rules-tbody').replaceChildren(...list.map(r => {
-            const tr = document.createElement('tr');
-            cell(tr, r.field || r.matchType || '');
-            cell(tr, r.pattern || '');
-
-            const badge = document.createElement('span');
-            badge.className = 'badge static-badge';
-            setBadge(badge, r.action || 'KEEP', null);
-            const actTd = document.createElement('td');
-            actTd.appendChild(badge);
-            tr.appendChild(actTd);
-
-            cell(tr, r.category || 'Rule');
-            cell(tr, r.folder || '');
-
-            const delTd = document.createElement('td');
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.className = 'btn-sm';
-            delBtn.textContent = '✕';
-            delBtn.title = 'Delete rule';
-            delBtn.onclick = async () => {
-                try {
-                    await api(`/api/rules/${encodeURIComponent(r.id)}`, undefined, 'DELETE');
-                    await loadRules();
-                    show('Rule removed.');
-                } catch (err) {
-                    show(err.message, true);
-                }
-            };
-            delTd.appendChild(delBtn);
-            tr.appendChild(delTd);
-
-            return tr;
-        }));
-    }
-
-    async function loadRules() {
-        try {
-            const res = await fetch('/api/rules');
-            if (!res.ok) { renderRules([]); return; }   // 409 = no account connected
-            const data = await res.json();
-            renderRules(Array.isArray(data) ? data : (data.rules || []));
-        } catch (_) { /* ignore if rules endpoint not yet wired */ }
-    }
-
-    $('add-rule-btn').onclick = async () => {
-        const pattern = $('rule-pattern').value.trim();
-        if (!pattern) {
-            show('Enter a pattern for the prefilter rule.', true);
-            return;
-        }
-        const folder = $('rule-folder').value.trim();
-        try {
-            await api('/api/rules', {
-                field: $('rule-field').value,
-                pattern,
-                // a folder rule always moves to its folder; the server ignores the action then
-                action: folder ? 'MOVE_TO_FOLDER' : $('rule-action').value,
-                category: $('rule-category').value.trim() || 'Rule',
-                folder
-            });
-            $('rule-pattern').value = '';
-            $('rule-folder').value = '';
-            await loadRules();
-            show('Prefilter rule saved.');
-        } catch (err) {
-            show(err.message, true);
-        }
-    };
-
-    // ── Folders (jev sorts into these) ──────────────────
-
-    function renderFolders(folders) {
-        const list = Array.isArray(folders) ? folders : [];
-        $('folders-count').textContent = list.length;
-
-        const picked = $('rule-folder').value;
-        $('rule-folder').replaceChildren(
-            new Option('→ no folder (use the action)', ''),
-            ...list.map(f => new Option('→ ' + f.name, f.name)));
-        $('rule-folder').value = list.some(f => f.name === picked) ? picked : '';
-
-        $('folders-tbody').replaceChildren(...list.map(f => {
-            const tr = document.createElement('tr');
-            cell(tr, f.name);
-            cell(tr, f.description);
-
-            const delTd = document.createElement('td');
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'btn-sm';
-            editBtn.textContent = '✎';
-            editBtn.title = 'Edit what belongs in this folder (jev sorts by it)';
-            editBtn.onclick = async () => {
-                const description = prompt(`What belongs in "${f.name}"? One sentence.`, f.description);
-                if (description === null || description.trim() === f.description) return;
-                try {
-                    await api(`/api/folders/${encodeURIComponent(f.id)}`, { description }, 'PUT');
-                    await loadFolders();
-                    show(`Description of "${f.name}" saved.`);
-                } catch (err) {
-                    show(err.message, true);
-                }
-            };
-            delTd.appendChild(editBtn);
-
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.className = 'btn-sm';
-            delBtn.textContent = '✕';
-            delBtn.title = 'Delete folder (mail already in it stays there)';
-            delBtn.onclick = async () => {
-                try {
-                    await api(`/api/folders/${encodeURIComponent(f.id)}`, undefined, 'DELETE');
-                    await loadFolders();
-                    show('Folder removed. Mail already filed there stays where it is.');
-                } catch (err) {
-                    show(err.message, true);
-                }
-            };
-            delTd.appendChild(delBtn);
-            tr.appendChild(delTd);
-            return tr;
-        }));
-    }
-
-    async function loadFolders() {
-        try {
-            const res = await fetch('/api/folders');
-            if (!res.ok) { renderFolders([]); return; } // 409 = no account connected
-            renderFolders(await res.json());
-        } catch (_) { /* ignore if folders endpoint not reachable */ }
-    }
-
-    $('add-folder-btn').onclick = async () => {
-        const name = $('folder-name').value.trim();
-        const description = $('folder-description').value.trim();
-        if (!name || !description) {
-            show('Enter a folder name and a one-sentence description of what belongs there.', true);
-            return;
-        }
-        try {
-            await api('/api/folders', { name, description });
-            $('folder-name').value = '';
-            $('folder-description').value = '';
-            await loadFolders();
-            show(`Folder "${name}" saved.`);
-        } catch (err) {
-            show(err.message, true);
-        }
-    };
-
-    $('promote-rule-btn').onclick = async () => {
-        const domain = extractDomain(selectedFrom);
-        const pattern = domain || selectedFrom.trim();
-        if (!pattern) return;
-
-        const field = domain ? 'FROM_DOMAIN' : 'FROM_ADDRESS';
-        const known = [...$('rule-folder').options].map(o => o.value).filter(Boolean);
-        const folderAnswer = prompt(
-            `File all mail from "${pattern}" into which folder?\n`
-            + (known.length ? `Your folders: ${known.join(', ')}\n` : 'You have no folders yet: create one under Folders.\n')
-            + '(Leave empty to use the action instead.)', '');
-        if (folderAnswer === null) return; // cancelled
-        const folder = folderAnswer.trim();
-        const current = selectedCurrentAction || 'ARCHIVE';
-        const action = folder ? 'MOVE_TO_FOLDER' : (current === 'MOVE_TO_FOLDER' ? 'ARCHIVE' : current);
-
-        try {
-            await api('/api/rules', {
-                field,
-                pattern,
-                action,
-                category: 'Rule',
-                folder
-            });
-            $('rules-panel').open = true;
-            await loadRules();
-            show(`Rule created: ${field} "${pattern}" → ${folder ? 'folder ' + folder : action}`);
-        } catch (err) {
-            show(err.message, true);
-        }
-    };
-
-    // ── Autopilot Mode ──────────────────────────────────
-
-    function syncAutopilotUI(enabled, intervalSeconds) {
-        autopilotEnabled = !!enabled;
-        if (intervalSeconds) $('autopilot-interval').value = intervalSeconds;
-
-        const btn = $('autopilot-toggle');
-        const status = $('autopilot-status');
-
-        if (autopilotEnabled) {
-            btn.textContent = 'Stop Autopilot';
-            btn.classList.add('active-mode');
-            status.textContent = `Autopilot: Running (every ${$('autopilot-interval').value}s)`;
-            status.classList.add('live');
-            $('preview-btn').disabled = true;
-            $('apply').disabled = true;
-        } else {
-            btn.textContent = 'Start Autopilot';
-            btn.classList.remove('active-mode');
-            status.textContent = 'Autopilot: Off';
-            status.classList.remove('live');
-            setLoading(false);
-        }
-    }
-
-    $('autopilot-toggle').onclick = async () => {
-        const nextState = !autopilotEnabled;
-        const intervalSeconds = Math.max(10, +$('autopilot-interval').value || 120);
-        const limit = Math.max(1, +$('limit').value || 10);
-
-        try {
-            const res = await api('/api/autopilot', {
-                enabled: nextState,
-                intervalSeconds,
-                limit
-            });
-            syncAutopilotUI(res.enabled ?? nextState, res.intervalSeconds ?? intervalSeconds);
-            if (autopilotEnabled) {
-                show(`Autopilot enabled (${intervalSeconds}s interval).`);
-                await loadActivityFeed();
-            } else {
-                show('Autopilot stopped.');
-            }
-        } catch (err) {
-            show(err.message, true);
-        }
-    };
-
-    async function loadAutopilotStatus() {
-        try {
-            const res = await fetch('/api/autopilot');
-            if (!res.ok) return;
-            const data = await res.json();
-            syncAutopilotUI(data.enabled, data.intervalSeconds);
-        } catch (_) { /* ignore */ }
-    }
-
-    // ── Accounts ────────────────────────────────────────
-
-    async function loadAccounts() {
-        try {
-            const response = await fetch('/api/accounts');
-            if (!response.ok) {
-                throw new Error(`Failed to load accounts: ${response.status}`);
-            }
-
-            const accounts = await response.json();
-            const sel = document.getElementById('account');
-            sel.replaceChildren();
-
-            const hasActive = accounts.some(a => a.status === 'ACTIVE');
-            const active = accounts.find(a => a.status === 'ACTIVE');
-            document.querySelectorAll('.active-account').forEach(el => {
-                el.textContent = active ? active.username : 'no account';
-            });
-            loadRules();
-            loadFolders();
-            loadStats();                                  // stats and feed are per account too
-            if (viewingActivityFeed) loadActivityFeed();
-            if (!hasActive) {
-                const placeholder = new Option('Select an account…', '', true, true);
-                placeholder.disabled = true;
-                sel.add(placeholder);
-            }
-
-            for (const account of accounts) {
-                sel.add(new Option(
-                    `${account.username} (${account.service})`,
-                    account.id,
-                    false,
-                    account.status === 'ACTIVE'
-                ));
-            }
-
-            sel.add(new Option('+ Add account…', '__new__'));
-
-            if (hasActive) {
-                enablePreview(true);
-            }
-            if (accounts.length === 0) {
-                show('Use the connection form above to add an account.');
-            }
-        } catch (error) {
-            console.error('Account loading failed:', error);
-            show(error.message, true);
-        }
-    }
-
-    document.getElementById('account').addEventListener('change', async (e) => {
-        const accountId = e.target.value;
-
-        if (accountId === '__new__') {
-            show('Use the connection form above to add an account.');
-            return;
-        }
-
-        if (!accountId) return;
-
-        clearPlan();
-        enablePreview(false);
-
-        try {
-            setLoading(true, 'Connecting account…');
-            show('');
-
-            const response = await fetch('/api/accounts/connect', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: accountId })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || `Connection failed: ${response.status}`);
-            }
-
-            await loadAccounts();
-            enablePreview(true);
-            show('Connected.');
-        } catch (error) {
-            console.error('Account connection failed:', error);
-            show(error.message, true);
-        } finally {
-            setLoading(false);
-        }
-    });
-
-    // ── Preview helpers ─────────────────────────────────
-
-    function closePreview() {
-        selectedEmailId = null;
-        selectedFrom = '';
-
-        document.querySelectorAll('#rows tr.selected').forEach(r => r.classList.remove('selected'));
-
-        // Rescue the preview node BEFORE removing the row that contains it,
-        // otherwise it is destroyed and every later $('preview') is null.
-        const p = $('preview');
-        p.classList.remove('visible');
-        $('preview-holder').appendChild(p);
-
-        detailRow?.remove();
-        detailRow = null;
-
-        $('promote-rule-btn').style.display = 'none';
-        $('preview-from').textContent = '';
-        $('preview-subject').textContent = '';
-        $('preview-date').textContent = '';
-        $('preview-body').textContent = '';
-        $('preview-body').classList.add('empty');
-        $('preview-loading').style.display = 'none';
-    }
-
-    async function openPreview(emailId, from, subject, currentAction, row) {
-        closePreview();
-
-        selectedEmailId = emailId || null;
-        selectedFrom = from || '';
-        selectedCurrentAction = currentAction || 'ARCHIVE';
-        row.classList.add('selected');
-
-        const domain = extractDomain(selectedFrom);
-        if (domain || selectedFrom.trim()) {
-            $('promote-rule-btn').textContent = domain ? `+ Rule (@${domain})` : '+ Rule from sender';
-            $('promote-rule-btn').style.display = 'inline-block';
-        }
-
-        // Expandable row immediately below the clicked row (5 columns)
-        detailRow = document.createElement('tr');
-        detailRow.className = 'detail-row';
-
-        const detailCell = document.createElement('td');
-        detailCell.colSpan = 5;
-        detailRow.appendChild(detailCell);
-        row.after(detailRow);
-
-        // Move the existing preview into the expanded row
-        detailCell.appendChild($('preview'));
-        $('preview').classList.add('visible');
-
-        $('preview-from').textContent = from || '(unknown sender)';
-        $('preview-subject').textContent = subject || '(no subject)';
-        $('preview-date').textContent = '';
-        $('preview-loading').style.display = 'block';
-        $('preview-body').textContent = '';
-        $('preview-body').classList.remove('empty');
-
-        if (!emailId) {
-            $('preview-loading').style.display = 'none';
-            $('preview-body').textContent = 'No email id found on this row.';
-            return;
-        }
-
-        try {
-            const data = await api('/api/email', { emailId });
-
-            if (selectedEmailId !== emailId) return;
-
-            const text = data.textBody ?? data.body ?? data.plainText;
-            if (text) {
-                $('preview-body').textContent = text;
-            } else {
-                $('preview-body').textContent = '(no plain-text body available)';
-                $('preview-body').classList.add('empty');
-            }
-
-            if (data.date) $('preview-date').textContent = data.date;
-            if (data.from) {
-                $('preview-from').textContent = data.from;
-                selectedFrom = data.from;
-            }
-            if (data.subject) $('preview-subject').textContent = data.subject;
-        } catch (e) {
-            if (selectedEmailId === emailId) {
-                $('preview-body').textContent = 'Failed to load email: ' + e.message;
-            }
-        } finally {
-            if (selectedEmailId === emailId) {
-                $('preview-loading').style.display = 'none';
-            }
-        }
-    }
-
-    $('preview-close').onclick = closePreview;
-
-    // ── Plan rendering (Action first, no Confidence) ────
-
-    function renderPlan(plan) {
-        viewingActivityFeed = false;
-        currentPlanId = plan.planId;
-        overrides = {};
-        closePreview();
-
-        renderSummary(plan.counts || {});
-
-        $('rows').replaceChildren(...plan.entries.map(e => {
-            const tr = document.createElement('tr');
-
-            const key = e.emailId ?? e.id ?? e.uid ?? e.messageId
-                ?? e.messageUid ?? e.mailId ?? e.entryId;
-
-            if (key != null) tr.dataset.emailId = String(key);
-
-            // 1. Action badge first
-            const badge = document.createElement('span');
-            badge.className = 'badge';
-            setBadge(badge, e.action, e.folder);
-
-            if (key != null) {
-                badge.title = 'Click to change action';
-                badge.onclick = (ev) => {
-                    ev.stopPropagation();
-                    const cycle = actionsFor(e.folder);
-                    const idx = cycle.indexOf(badge.dataset.action);
-                    const next = cycle[(idx + 1) % cycle.length];
-                    setBadge(badge, next, e.folder);
-                    overrides[key] = next;
-                    if (selectedEmailId === key) selectedCurrentAction = next;
-                    updateSummaryFromTable();
-                };
-            } else {
-                badge.classList.add('locked');
-                badge.title = 'This entry has no id, so its action cannot be changed';
-                badge.onclick = ev => ev.stopPropagation();
-            }
-
-            const actionTd = document.createElement('td');
-            actionTd.appendChild(badge);
-            tr.appendChild(actionTd);
-
-            // 2. From
-            cell(tr, e.from);
-            // 3. Subject
-            cell(tr, e.subject);
-            // 4. Category
-            cell(tr, e.category);
-
-            // 5. Reason (with optional prefilter rule tag)
-            const reasonTd = document.createElement('td');
-            const isRule = e.source === 'RULE' || e.matchedRule || e.fromRule;
-            if (isRule) {
-                const tag = document.createElement('span');
-                tag.className = 'src-tag rule';
-                tag.textContent = 'RULE';
-                reasonTd.appendChild(tag);
-            }
-            reasonTd.appendChild(document.createTextNode(e.reason ?? ''));
-            reasonTd.title = (isRule ? '[RULE] ' : '') + (e.reason ?? '');
-            tr.appendChild(reasonTd);
-
-            tr.style.cursor = 'pointer';
-            tr.onclick = () => tr.classList.contains('selected')
-                ? closePreview()
-                : openPreview(key, e.from, e.subject, badge.dataset.action, tr);
-            return tr;
-        }));
-    }
-
-    function clearPlan() {
-        currentPlanId = null;
-        overrides = {};
-        closePreview();
-        $('summary').replaceChildren();
-        $('rows').replaceChildren();
-        enableApply(false);
-    }
-
-    // ── Actions ─────────────────────────────────────────
-
-    $('connect').onclick = async () => {
-        setLoading(true, 'Connecting…');
-        show('');
-        try {
-            clearPlan();
-            const provider = $('provider').value;
-            const body = {
-                provider: provider,
-                username: $('user').value,
-                secret: $('pass').value
-            };
-            if (!provider) {
-                body.host = $('host').value;
-                body.port = +$('port').value;
-                body.ssl  = String($('ssl').checked);
-            }
-            await api('/api/connect', body);
-            await loadAccounts();
-            show('Connected.');
-            enablePreview(true);
-        } catch (e) {
-            show(e.message, true);
-            enablePreview(false);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    $('preview-btn').onclick = async () => {
-        if (autopilotEnabled) return;
-        setLoading(true, 'Classifying…');
-        show('');
-        try {
-            const plan = await api('/api/classify', {
-                limit: +$('limit').value
-            });
-            renderPlan(plan);
-            show(plan.entries.length
-                ? 'Plan ready. Click a row to preview the email, or change the action badge.'
-                : 'Nothing to do – inbox is clean (or limit is zero).');
-            enableApply(plan.entries.length > 0);
-        } catch (e) {
-            show(e.message, true);
-            clearPlan();
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    $('apply').onclick = async () => {
-        if (!currentPlanId || autopilotEnabled) return;
-        if (!confirm('Apply the current plan to the mailbox?')) return;
-
-        setLoading(true, 'Applying plan…');
-        show('');
-        try {
-            const result = await api('/api/apply', {
-                planId: currentPlanId,
-                overrides: overrides
-            });
-
-            const applied = Object.entries(result.applied || {})
-                .map(([a, n]) => a + ': ' + n)
-                .join(', ') || 'none';
-            const failCount = (result.failures || []).length;
-
-            clearPlan();
-            await loadStats();
-            show(failCount
-                ? `Applied (${applied}). ${failCount} failure(s) – they can be retried next run.`
-                : `Applied (${applied}).`);
-        } catch (e) {
-            show(e.message, true);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // ── Live SSE Stream (Autopilot + Stats updates) ─────
-
-    function connectEvents() {
-        try {
-            const es = new EventSource('/api/events');
-            es.addEventListener('stats', () => loadStats());
-            es.addEventListener('autopilot', async (ev) => {
-                await loadStats();
-                if (ev.data) show(`Autopilot: ${ev.data}`);
-                if (autopilotEnabled || viewingActivityFeed) {
-                    await loadActivityFeed();
-                }
-            });
-            es.onmessage = async (ev) => {
-                try {
-                    const msg = JSON.parse(ev.data);
-                    if (msg.type === 'stats' || msg.type === 'autopilot') {
-                        await loadStats();
-                        if (msg.summary) show(`Autopilot: ${msg.summary}`);
-                        if (autopilotEnabled || viewingActivityFeed) {
-                            await loadActivityFeed();
-                        }
-                    }
-                } catch (_) { /* plain text message ignored */ }
-            };
-        } catch (_) { /* SSE optional */ }
-    }
-
-    // ── Initial load ────────────────────────────────────
-
-    loadAccounts();
-    loadStats();
-    loadRules();
-    loadFolders();
-    loadAutopilotStatus();
-    connectEvents();
-</script>
+<details class="card setup" id="setup">
+    <summary>Folders, rules &amp; activity for <span class="active-account">no account</span></summary>
+
+    <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="folders" aria-selected="true">Folders (<span id="folders-count">0</span>)</button>
+        <button type="button" role="tab" data-tab="rules" aria-selected="false">Rules (<span id="rules-count">0</span>)</button>
+        <button type="button" role="tab" data-tab="activity" aria-selected="false">Activity</button>
+    </div>
+
+    <div class="tab-pane" data-pane="folders">
+        <p class="tab-help">Describe what belongs in each folder. Matching mail is filed there automatically.</p>
+        <div class="rule-form">
+            <input id="folder-name" placeholder="Folder name, e.g. Travel" size="20">
+            <input id="folder-description" class="grow" maxlength="300"
+                   placeholder="What belongs here, e.g. flight, hotel and holiday deals">
+            <button id="add-folder-btn" type="button">Add folder</button>
+        </div>
+        <div class="rules-list">
+            <table>
+                <thead><tr><th>Folder</th><th>What belongs here</th><th></th></tr></thead>
+                <tbody id="folders-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="tab-pane" data-pane="rules" hidden>
+        <p class="tab-help">Rules always win: matching mail skips the AI and gets this action.</p>
+        <div class="rule-form">
+            If
+            <select id="rule-field" title="What to match">
+                <option value="FROM_DOMAIN">sender domain is</option>
+                <option value="FROM_ADDRESS">sender address is</option>
+                <option value="SUBJECT_CONTAINS">subject contains</option>
+            </select>
+            <input id="rule-pattern" class="grow" placeholder="e.g. newsletter.example.com">
+            then
+            <select id="rule-target" title="What to do with matching mail"></select>
+            <button id="add-rule-btn" type="button">Add rule</button>
+        </div>
+        <div class="rules-list">
+            <table>
+                <thead><tr><th>If</th><th>Matches</th><th>Then</th><th></th></tr></thead>
+                <tbody id="rules-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="tab-pane" data-pane="activity" hidden>
+        <div class="rule-form">
+            What was done
+            <select id="activity-range" title="Time range">
+                <option value="1">today</option>
+                <option value="7" selected>in the last 7 days</option>
+                <option value="30">in the last 30 days</option>
+                <option value="">ever (last 500)</option>
+            </select>
+            <span id="activity-count" class="hint"></span>
+        </div>
+        <div class="rules-list activity-list">
+            <table>
+                <thead><tr><th>When</th><th>Action</th><th>From</th><th>Subject</th><th>Why</th></tr></thead>
+                <tbody id="activity-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</details>
+
+<dialog id="connect-dialog">
+    <form id="connect-form" method="dialog">
+        <h2>Add an email account</h2>
+        <label>Provider
+            <select id="provider">
+                <option value="gmail">Gmail</option>
+                <option value="gmx">GMX</option>
+                <option value="outlook">Outlook / Office 365</option>
+                <option value="yahoo">Yahoo</option>
+                <option value="icloud">iCloud</option>
+                <option value="">Other (IMAP)</option>
+            </select>
+        </label>
+        <div class="row custom-only" hidden>
+            <label>Server <input id="host" value="127.0.0.1"></label>
+            <label>Port <input id="port" class="num" type="number" value="3143"></label>
+        </div>
+        <label class="check custom-only" hidden><input id="ssl" type="checkbox"> Use SSL</label>
+        <label>Email <input id="user" autocomplete="username" required></label>
+        <label>Password <input id="pass" type="password" autocomplete="current-password" required></label>
+        <p class="error" id="connect-error"></p>
+        <div class="dialog-actions">
+            <button id="connect-cancel" type="button">Cancel</button>
+            <button id="connect" class="primary" type="submit">Connect</button>
+        </div>
+    </form>
+</dialog>
 </body>
 </html>

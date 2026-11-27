@@ -342,6 +342,15 @@ class WebServerTest {
     }
 
     @Test
+    void activityCanBeFilteredByTime() throws Exception {
+        recordActivity("1", ClassificationSource.RULE); // at 2026-11-26T20:00:00Z
+
+        assertThat(json.readTree(get("/api/activity?since=2026-11-26T19:00:00Z").body())).hasSize(1);
+        assertThat(json.readTree(get("/api/activity?since=2026-11-26T21%3A00%3A00Z").body())).isEmpty();
+        assertThat(get("/api/activity?since=yesterday").statusCode()).isEqualTo(400);
+    }
+
+    @Test
     void liveEventsAreStreamedToTheUi() throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + "/api/events")).GET().build();
         HttpResponse<Stream<String>> response = http.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
@@ -366,6 +375,18 @@ class WebServerTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("<title>Mail Sorter</title>");
+    }
+
+    @Test
+    void servesTheUiScriptsAndStylesButNothingElse() throws Exception {
+        var script = get("/js/main.js");
+        assertThat(script.statusCode()).isEqualTo(200);
+        assertThat(script.headers().firstValue("Content-Type")).hasValueSatisfying(t -> assertThat(t).startsWith("text/javascript"));
+        assertThat(get("/app.css").statusCode()).isEqualTo(200);
+
+        assertThat(get("/js/../index.html").statusCode()).isEqualTo(404);
+        assertThat(get("/js/nope.js").statusCode()).isEqualTo(404);
+        assertThat(get("/dev/jefe/mailsorter/Main.class").statusCode()).isEqualTo(404);
     }
 
     // -- user folders -------------------------------------------------------------

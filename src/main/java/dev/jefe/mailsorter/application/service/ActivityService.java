@@ -7,6 +7,7 @@ import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.dto.ActivityEntry;
 import dev.jefe.mailsorter.application.port.out.dto.StatsSnapshot;
 
+import java.time.Instant;
 import java.util.List;
 
 /** Use case: read what has been sorted so far, for the connected account (all accounts when none is). */
@@ -27,9 +28,9 @@ public final class ActivityService implements ActivityUseCase {
     }
 
     @Override
-    public List<ActivityEntry> recent(int limit) {
+    public List<ActivityEntry> recent(Instant since, int limit) {
         if (limit < 1) throw new IllegalArgumentException("limit must be positive");
-        return repository.recent(connectedAccount(), Math.min(limit, MAX_LIMIT));
+        return repository.recent(connectedAccount(), since, Math.min(limit, MAX_LIMIT));
     }
 
     @Override

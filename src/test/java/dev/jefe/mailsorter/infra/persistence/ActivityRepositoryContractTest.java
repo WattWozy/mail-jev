@@ -68,6 +68,20 @@ public abstract class ActivityRepositoryContractTest {
     }
 
     @Test
+    void recentCanBeLimitedToEntriesSinceAnInstant() {
+        repo.record(entry("old", 0, ClassificationSource.MODEL, false));
+        repo.record(entry("edge", 10, ClassificationSource.MODEL, false));
+        repo.record(new ActivityEntry(T0.plusMillis(10_500), "gmx|me@gmx.com", "frac", "a@b.com", "s",
+                Category.PROMOTION, 0.9, "r", Action.ARCHIVE, ClassificationSource.MODEL, false));
+
+        assertThat(repo.recent(null, T0.plusSeconds(10), 10))
+                .extracting(ActivityEntry::emailId).containsExactlyInAnyOrder("edge", "frac");
+        assertThat(repo.recent(null, T0.plusMillis(10_200), 10))
+                .extracting(ActivityEntry::emailId).containsExactly("frac");
+        assertThat(repo.recent(null, null, 10)).hasSize(3);
+    }
+
+    @Test
     void statsCountTotalsBySourceAndOverrides() {
         repo.record(entry("1", 0, ClassificationSource.RULE, false));
         repo.record(entry("2", 1, ClassificationSource.RULE, true));

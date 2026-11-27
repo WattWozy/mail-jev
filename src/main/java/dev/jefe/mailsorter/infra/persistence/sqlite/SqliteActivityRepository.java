@@ -29,6 +29,7 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
                    reason, action, source, overridden, folder
             FROM activity
             WHERE (? IS NULL OR account_id = ?)
+              AND (? IS NULL OR julianday(at) >= julianday(?))
             ORDER BY at DESC, id DESC
             LIMIT ?
             """;
@@ -68,11 +69,14 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
     }
 
     @Override
-    public List<ActivityEntry> recent(String accountId, int limit) {
+    public List<ActivityEntry> recent(String accountId, Instant since, int limit) {
+        String sinceText = since == null ? null : since.toString();
         try (var con = db.connection(); var ps = con.prepareStatement(RECENT)) {
             ps.setString(1, accountId);
             ps.setString(2, accountId);
-            ps.setInt(3, limit);
+            ps.setString(3, sinceText);
+            ps.setString(4, sinceText);
+            ps.setInt(5, limit);
             try (var rs = ps.executeQuery()) {
                 List<ActivityEntry> out = new ArrayList<>();
                 while (rs.next()) out.add(map(rs));

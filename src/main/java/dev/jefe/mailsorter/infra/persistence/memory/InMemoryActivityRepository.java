@@ -5,6 +5,7 @@ import dev.jefe.mailsorter.application.port.out.dto.ActivityEntry;
 import dev.jefe.mailsorter.application.port.out.dto.StatsSnapshot;
 import dev.jefe.mailsorter.domain.model.ClassificationSource;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -19,9 +20,10 @@ public final class InMemoryActivityRepository implements ActivityRepository {
     }
 
     @Override
-    public synchronized List<ActivityEntry> recent(String accountId, int limit) {
+    public synchronized List<ActivityEntry> recent(String accountId, Instant since, int limit) {
         return entries.reversed().stream()               // stable sort: latest insert first on equal timestamps
                 .filter(e -> accountId == null || accountId.equals(e.accountId()))
+                .filter(e -> since == null || !e.timestamp().isBefore(since))
                 .sorted(Comparator.comparing(ActivityEntry::timestamp).reversed())
                 .limit(limit)
                 .toList();
