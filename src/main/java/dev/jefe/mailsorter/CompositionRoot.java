@@ -5,6 +5,7 @@ import dev.jefe.mailsorter.application.port.out.AuditLog;
 import dev.jefe.mailsorter.application.port.out.AutopilotSettingsStore;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.port.out.CredentialStore;
+import dev.jefe.mailsorter.application.port.out.FolderRepository;
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.*;
 import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
@@ -25,6 +26,7 @@ import dev.jefe.mailsorter.infra.persistence.sqlite.SqliteAutopilotSettingsStore
 import dev.jefe.mailsorter.infra.scheduling.ExecutorScheduler;
 import dev.jefe.mailsorter.infra.persistence.sqlite.SqliteCredentialStore;
 import dev.jefe.mailsorter.infra.persistence.sqlite.SqliteRuleStore;
+import dev.jefe.mailsorter.infra.persistence.sqlite.SqliteFolderStore;
 import dev.jefe.mailsorter.infra.persistence.sqlite.SqliteDatabase;
 import dev.jefe.mailsorter.infra.web.SseBroadcaster;
 import dev.jefe.mailsorter.infra.web.WebServer;
@@ -32,7 +34,6 @@ import dev.jefe.mailsorter.infra.web.WebServer;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -49,6 +50,7 @@ public final class CompositionRoot {
         AccountService accountService;
         AutopilotSettingsStore autopilotSettings;
         ActivityRepository activityRepository;
+        FolderRepository folderRepository;
 
         var store = new InMemoryConnectionStore();
         var cipher = new AesGcmSecretCipher(config.storeSecretKey());
@@ -65,6 +67,7 @@ public final class CompositionRoot {
             ruleRepository = new SqliteRuleStore(db);
             autopilotSettings = new SqliteAutopilotSettingsStore(db);
             activityRepository = new SqliteActivityRepository(db);
+            folderRepository = new SqliteFolderStore(db);
         } else {
             auditLog = new InMemoryAuditLog();
             credentialStore = new InMemoryCredentialStore();
@@ -75,6 +78,7 @@ public final class CompositionRoot {
             ruleRepository = new InMemoryRuleStore();
             autopilotSettings = new InMemoryAutopilotSettingsStore();
             activityRepository = new InMemoryActivityRepository();
+            folderRepository = new InMemoryFolderStore();
         }
 
         var planStore = new InMemoryPlanStore();
@@ -85,7 +89,8 @@ public final class CompositionRoot {
                 new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))),
                 500);
 
-        var preFilteringClassifier = new PreFilteringClassifier(jev, builtinRules);
+        // Rules are per account: the classifier asks for the account's own rules (first) on demand.
+        var preFilteringClassifier = new PreFilteringClassifier(jev, builtinRules, ruleRepository::findAll);
         Classifier classifier = preFilteringClassifier;
 
         var policy = new PolicyEngine(Map.of(
@@ -96,17 +101,13 @@ public final class CompositionRoot {
 
         var classifyService = new ClassifyService(store, classifier, policy, planStore);
 
-        // User rules first: what the user explicitly asked for beats the built-in heuristics.
-        var ruleService = new RuleService(ruleRepository, userRules -> {
-            List<Rule> combined = new ArrayList<>(userRules.size() + builtinRules.size());
-            combined.addAll(userRules);
-            combined.addAll(builtinRules);
-            preFilteringClassifier.replaceRules(combined);
+        var ruleService = new RuleService(ruleRepository, store, () -> {
+            preFilteringClassifier.rulesChanged();
             classifyService.forgetCachedClassifications(); // a new rule must apply to mail already seen
         });
 
-        // Load persisted SQLite rules immediately on startup
-        ruleService.reload();
+        // Step 3 hands the folders to jev; until then they are only stored.
+        var folderService = new FolderService(folderRepository, store, () -> { });
         var applyService = new ApplyPlanService(store, planStore, auditLog, activityRepository, Clock.systemUTC());
         var events = new SseBroadcaster();
 
@@ -125,6 +126,7 @@ public final class CompositionRoot {
                 applyService,
                 new GetEmailService(store),
                 ruleService,
+                folderService,
                 autopilot,
                 new ActivityService(activityRepository),
                 events

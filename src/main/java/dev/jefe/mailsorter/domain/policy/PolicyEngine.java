@@ -36,9 +36,16 @@ public final class PolicyEngine {
     }
 
     public Action decide(Classification c) {
-        // The user said where this belongs: that beats the category. Filing is never destructive,
-        // so protected categories may be filed too.
-        Action configured = c.folder() != null ? Action.MOVE_TO_FOLDER : actionFor(c);
+        // What the user asked for beats the category: a folder first (filing is never destructive, so protected
+        // categories may be filed too), then a rule's action (still never trashing a protected category).
+        Action configured;
+        if (c.folder() != null) {
+            configured = Action.MOVE_TO_FOLDER;
+        } else if (c.action() != null) {
+            configured = protect(c.category(), c.action());
+        } else {
+            configured = actionFor(c);
+        }
         if (configured == Action.FLAG_FOR_REVIEW) {
             return configured;
         }
@@ -56,11 +63,11 @@ public final class PolicyEngine {
             return Action.FLAG_FOR_REVIEW;
         }
 
-        Action configured = actions.getOrDefault(c.category(), Action.KEEP);
-        if (PROTECTED.contains(c.category()) && configured == Action.MOVE_TO_TRASH) {
-            configured = Action.KEEP;
-        }
-        return configured;
+        return protect(c.category(), actions.getOrDefault(c.category(), Action.KEEP));
+    }
+
+    private static Action protect(Category category, Action action) {
+        return PROTECTED.contains(category) && action == Action.MOVE_TO_TRASH ? Action.KEEP : action;
     }
 
     private static Map<Action, Double> defaultThresholds(double fallback) {

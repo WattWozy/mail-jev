@@ -5,13 +5,15 @@ import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.domain.model.EmailContent;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Driven port. Adapters: IMAP, Gmail API, Microsoft Graph. */
 public interface MailProvider extends AutoCloseable {
     EmailContent read(String emailId);
     List<Email> listUnprocessed(int limit);
-    Set<String> applyAll(List<MailOperation> operations, String reviewLabel);
+    /** Applies all operations in as few round trips as possible. Returns emailId -> reason for each failure. */
+    Map<String, String> applyAll(List<MailOperation> operations, String reviewLabel);
     String accountId();
     void close();
     void markProcessed(String emailId);

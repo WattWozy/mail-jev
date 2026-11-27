@@ -82,16 +82,15 @@ public final class AccountService implements ConnectUseCase, ListAccountsUseCase
 
     private void connectAndActivate(MailboxConfig config) {
         connectionStore.save(factory.connect(config));   // a failure leaves the old session intact
-        activeAccountId = accountId(serviceKey(config), config.username());
+        activeAccountId = config.accountKey();
     }
 
     private static String serviceKey(MailboxConfig config) {
-        String type = config.providerType().toLowerCase();
-        return PRESET_HOSTS.containsKey(type) ? type : "imap:" + config.host();
+        return config.serviceKey();
     }
 
     private static String accountId(String service, String username) {
-        return service + "|" + username;
+        return MailboxConfig.accountKey(service, username);
     }
 
     private static MailboxConfig rebuildConfig(StoredCredential stored) {

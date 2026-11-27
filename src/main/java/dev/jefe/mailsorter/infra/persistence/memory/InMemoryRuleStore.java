@@ -1,39 +1,33 @@
 package dev.jefe.mailsorter.infra.persistence.memory;
+
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
 
-
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class InMemoryRuleStore implements RuleRepository {
 
-    private final ConcurrentHashMap<String, PrefilterRule> byId = new ConcurrentHashMap<>();
-    private final CopyOnWriteArrayList<String> order = new CopyOnWriteArrayList<>();
+    private final Map<String, Map<String, PrefilterRule>> byAccount = new HashMap<>(); // inner: insertion order
 
     @Override
-    public List<PrefilterRule> findAll() {
-        return order.stream()
-                .map(byId::get)
-                .filter(Objects::nonNull)
-                .toList();
+    public synchronized List<PrefilterRule> findAll(String accountId) {
+        return List.copyOf(byAccount.getOrDefault(accountId, Map.of()).values());
     }
 
     @Override
-    public void save(PrefilterRule rule) {
+    public synchronized void save(String accountId, PrefilterRule rule) {
+        Objects.requireNonNull(accountId, "accountId is required");
         Objects.requireNonNull(rule, "rule is required");
-        boolean isNew = byId.put(rule.id(), rule) == null;
-        if (isNew) {
-            order.add(rule.id());
-        }
+        byAccount.computeIfAbsent(accountId, k -> new LinkedHashMap<>()).put(rule.id(), rule);
     }
 
     @Override
-    public boolean deleteById(String id) {
-        if (id == null) return false;
-        order.remove(id);
-        return byId.remove(id) != null;
+    public synchronized boolean deleteById(String accountId, String id) {
+        var rules = byAccount.get(accountId);
+        return rules != null && id != null && rules.remove(id) != null;
     }
 }

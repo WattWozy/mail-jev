@@ -128,7 +128,7 @@ public final class ClassifyService implements ClassifyUseCase {
 
         limiter.acquire();
         try {
-            Classification classification = classifier.classify(email);
+            Classification classification = classifier.classify(email, key.accountId());
             cache.put(key, classification);
             return classification;
         } catch (ClassificationFailedException e) {

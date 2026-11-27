@@ -99,4 +99,42 @@ class PolicyEngineTest {
         assertThatThrownBy(() -> new PolicyEngine(Map.of(), 1.5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    // -- rule actions ---------------------------------------------------------------
+
+    @Test
+    void aRulesActionIsApplied() {
+        var result = engine.decide(new Classification(Category.OTHER, 1.0, "rule").withAction(Action.MOVE_TO_TRASH));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_TRASH);
+    }
+
+    @Test
+    void aRulesActionBeatsTheCategoryAction() {
+        var result = engine.decide(new Classification(Category.NEWSLETTER, 1.0, "rule").withAction(Action.KEEP));
+
+        assertThat(result).isEqualTo(Action.KEEP); // NEWSLETTER alone would be ARCHIVE
+    }
+
+    @Test
+    void aRuleCanNeverTrashAProtectedCategory() {
+        var result = engine.decide(new Classification(Category.INVOICE, 1.0, "rule").withAction(Action.MOVE_TO_TRASH));
+
+        assertThat(result).isEqualTo(Action.KEEP);
+    }
+
+    @Test
+    void aFolderBeatsARulesAction() {
+        var result = engine.decide(new Classification(Category.OTHER, 1.0, "rule")
+                .withAction(Action.ARCHIVE).withFolder("Ikea"));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
+    @Test
+    void anUnsureRuleActionIsFlaggedForReview() {
+        var result = engine.decide(new Classification(Category.OTHER, 0.5, "rule").withAction(Action.MOVE_TO_TRASH));
+
+        assertThat(result).isEqualTo(Action.FLAG_FOR_REVIEW);
+    }
 }

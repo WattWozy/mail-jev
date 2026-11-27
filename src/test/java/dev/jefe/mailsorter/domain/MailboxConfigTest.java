@@ -15,4 +15,18 @@ class MailboxConfigTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("host");
     }
+
+    @Test
+    void aPresetProviderIsKeyedByItsNameAndUsername() {
+        var config = new MailboxConfig("Gmail", "imap.gmail.com", 993, "me@gmail.com", "secret", Map.of());
+
+        org.assertj.core.api.Assertions.assertThat(config.accountKey()).isEqualTo("gmail|me@gmail.com");
+    }
+
+    @Test
+    void aCustomImapServerIsKeyedByItsHostAndUsername() {
+        var config = new MailboxConfig("imap", "mail.example.com", 993, "me@example.com", "secret", Map.of());
+
+        org.assertj.core.api.Assertions.assertThat(config.accountKey()).isEqualTo("imap:mail.example.com|me@example.com");
+    }
 }

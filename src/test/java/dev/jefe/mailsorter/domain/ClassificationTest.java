@@ -1,5 +1,6 @@
 package dev.jefe.mailsorter.domain;
 
+import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Classification;
 import dev.jefe.mailsorter.domain.model.ClassificationSource;
@@ -37,5 +38,18 @@ class ClassificationTest {
     void stillRejectsAnOutOfRangeConfidence() {
         assertThatThrownBy(() -> new Classification(Category.OTHER, 1.1, "x"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void hasNoActionByDefaultAndRetaggingKeepsOne() {
+        assertThat(new Classification(Category.OTHER, 1.0, "x").action()).isNull();
+
+        var c = new Classification(Category.OTHER, 1.0, "x").withAction(Action.ARCHIVE).from(ClassificationSource.RULE);
+        assertThat(c.action()).isEqualTo(Action.ARCHIVE);
+    }
+
+    @Test
+    void moveToFolderIsNotAnActionOnItsOwnTheFolderSaysThat() {
+        assertThat(new Classification(Category.OTHER, 1.0, "x").withAction(Action.MOVE_TO_FOLDER).action()).isNull();
     }
 }

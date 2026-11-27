@@ -48,6 +48,7 @@ public final class WebServer implements AutoCloseable {
     private final ListRulesUseCase listRules;
     private final AddRuleUseCase addRule;
     private final DeleteRuleUseCase deleteRule;
+    private final FolderUseCase folders;
     private final AutopilotUseCase autopilot;
     private final ActivityUseCase activity;
     private final SseBroadcaster events;
@@ -59,6 +60,7 @@ public final class WebServer implements AutoCloseable {
                      ApplyPlanUseCase apply,
                      GetEmailUseCase getEmail,
                      RuleService ruleService,
+                     FolderUseCase folders,
                      AutopilotUseCase autopilot,
                      ActivityUseCase activity,
                      SseBroadcaster events) throws IOException {
@@ -73,6 +75,7 @@ public final class WebServer implements AutoCloseable {
         this.listRules = ruleService;
         this.addRule = ruleService;
         this.deleteRule = ruleService;
+        this.folders = folders;
 
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.createContext("/api/connect", post(this::handleConnect));
@@ -80,6 +83,7 @@ public final class WebServer implements AutoCloseable {
         server.createContext("/api/accounts/connect", post(this::handleConnectSaved));
         server.createContext("/api/rules", this::handleRules); // GET list, DELETE /{id}
         server.createContext("/api/rules/add", post(this::handleAddRule));
+        server.createContext("/api/folders", this::handleFolders); // GET list, POST add, DELETE /{id}
         server.createContext("/api/classify", post(this::handleClassify));
         server.createContext("/api/apply", post(this::handleApply));
         server.createContext("/api/email", post(this::handleEmail));
@@ -278,6 +282,36 @@ public final class WebServer implements AutoCloseable {
             }
 
             send(exchange, 405, "application/json", write(Map.of("error", "Method not allowed")));
+        }
+    }
+
+    // GET /api/folders | POST /api/folders {name, description} | DELETE /api/folders/{id}
+    private void handleFolders(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+            Response r;
+
+            if ("GET".equals(method) && "/api/folders".equals(path)) {
+                r = guarded(() -> new Response(200, folders.list()));
+            } else if ("POST".equals(method) && "/api/folders".equals(path)) {
+                try {
+                    JsonNode body = json.readTree(exchange.getRequestBody());
+                    r = guarded(() -> new Response(201, folders.add(
+                            body.path("name").asText(""), body.path("description").asText(""))));
+                } catch (JsonProcessingException e) {
+                    r = new Response(400, Map.of("error", String.valueOf(e.getOriginalMessage())));
+                }
+            } else if ("DELETE".equals(method) && path.startsWith("/api/folders/")) {
+                String id = path.substring("/api/folders/".length());
+                r = guarded(() -> {
+                    folders.delete(id);
+                    return new Response(200, Map.of("deleted", true, "id", id));
+                });
+            } else {
+                r = new Response(405, Map.of("error", "Method not allowed"));
+            }
+            send(exchange, r.status(), "application/json", write(r.body()));
         }
     }
 

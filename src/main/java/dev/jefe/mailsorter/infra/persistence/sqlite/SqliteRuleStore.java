@@ -20,13 +20,14 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
     private static final String SELECT_ALL = """
             SELECT id, match_field, pattern, action, category, folder
             FROM prefilter_rules
+            WHERE account_id = ?
             ORDER BY created_at ASC, rowid ASC
             """;
 
     private static final String UPSERT = """
-            INSERT INTO prefilter_rules(id, match_field, pattern, action, category, folder, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
+            INSERT INTO prefilter_rules(id, match_field, pattern, action, category, folder, created_at, account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, id) DO UPDATE SET
                 match_field = excluded.match_field,
                 pattern     = excluded.pattern,
                 action      = excluded.action,
@@ -35,7 +36,7 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
             """;
 
     private static final String DELETE_BY_ID = """
-            DELETE FROM prefilter_rules WHERE id = ?
+            DELETE FROM prefilter_rules WHERE id = ? AND account_id = ?
             """;
 
     public SqliteRuleStore {
@@ -43,16 +44,17 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
     }
 
     @Override
-    public List<PrefilterRule> findAll() {
+    public List<PrefilterRule> findAll(String accountId) {
         try (var con = db.connection();
-             var ps = con.prepareStatement(SELECT_ALL);
-             var rs = ps.executeQuery()) {
-
-            List<PrefilterRule> rules = new ArrayList<>();
-            while (rs.next()) {
-                rules.add(mapRow(rs));
+             var ps = con.prepareStatement(SELECT_ALL)) {
+            ps.setString(1, accountId);
+            try (var rs = ps.executeQuery()) {
+                List<PrefilterRule> rules = new ArrayList<>();
+                while (rs.next()) {
+                    rules.add(mapRow(rs));
+                }
+                return List.copyOf(rules);
             }
-            return List.copyOf(rules);
         } catch (SQLException e) {
             var ex = new PersistenceException("Could not load prefilter rules", e);
             AppLog.error(SqliteRuleStore.class, ex.getMessage(), ex);
@@ -61,7 +63,8 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
     }
 
     @Override
-    public void save(PrefilterRule rule) {
+    public void save(String accountId, PrefilterRule rule) {
+        Objects.requireNonNull(accountId, "accountId is required");
         Objects.requireNonNull(rule, "rule is required");
         try (var con = db.connection();
              var ps = con.prepareStatement(UPSERT)) {
@@ -73,6 +76,7 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
             ps.setString(5, rule.category().name());
             ps.setString(6, rule.folder());
             ps.setString(7, Instant.now().truncatedTo(ChronoUnit.MILLIS).toString());
+            ps.setString(8, accountId);
             ps.executeUpdate();
         } catch (SQLException e) {
             var ex = new PersistenceException("Could not save prefilter rule", e);
@@ -82,12 +86,13 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
     }
 
     @Override
-    public boolean deleteById(String id) {
+    public boolean deleteById(String accountId, String id) {
         if (id == null || id.isBlank()) return false;
         try (var con = db.connection();
              var ps = con.prepareStatement(DELETE_BY_ID)) {
 
             ps.setString(1, id);
+            ps.setString(2, accountId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             var ex = new PersistenceException("Could not delete prefilter rule", e);

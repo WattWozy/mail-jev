@@ -3,6 +3,7 @@ package dev.jefe.mailsorter.domain.config;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /** Provider-agnostic connection settings pasted in by the customer. */
 public record MailboxConfig(
@@ -17,6 +18,24 @@ public record MailboxConfig(
             throw new IllegalArgumentException("port must be in 1..65535");
         }
         options = options == null ? Map.of() : Map.copyOf(options);
+    }
+
+    /** Providers whose name alone identifies the server (see the UI presets). */
+    public static final Set<String> PRESETS = Set.of("gmail", "gmx", "outlook", "yahoo", "icloud");
+
+    /** Stable account key "service|username": rules, folders, activity and saved credentials all use it. */
+    public String accountKey() {
+        return accountKey(serviceKey(), username);
+    }
+
+    /** "gmail", "gmx", ... for a preset; "imap:<host>" for any other server. */
+    public String serviceKey() {
+        String type = providerType.toLowerCase(java.util.Locale.ROOT);
+        return PRESETS.contains(type) ? type : "imap:" + host;
+    }
+
+    public static String accountKey(String serviceKey, String username) {
+        return serviceKey + "|" + username;
     }
 
     private static void require(String value, String name) {

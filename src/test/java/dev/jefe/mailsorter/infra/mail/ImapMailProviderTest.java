@@ -112,6 +112,11 @@ class ImapMailProviderTest {
 //    }
 
     @Test
+    void theAccountIdIsTheSameKeyTheSavedAccountsUse() {
+        assertThat(provider.accountId()).isEqualTo("imap:127.0.0.1|me@example.com");
+    }
+
+    @Test
     void respectsTheLimit() throws Exception {
         deliver("<m1@test>", "a", "x", Map.of());
         deliver("<m2@test>", "b", "x", Map.of());
@@ -281,5 +286,20 @@ class ImapMailProviderTest {
         provider.restoreToInbox("<m1@test>");
         assertThat(subjectsIn("INBOX")).containsExactly("sofa");
         assertThat(subjectsIn("Ikea")).isEmpty();
+    }
+
+    // -- failure reasons ------------------------------------------------------------
+
+    @Test
+    void aMessageThatIsNoLongerInTheInboxFailsWithAReason() throws Exception {
+        deliver("<m1@test>", "one", "x", Map.of());
+
+        var failed = provider.applyAll(List.of(
+                new MailOperation("<m1@test>", Action.ARCHIVE),
+                new MailOperation("<gone@test>", Action.ARCHIVE)), "mail-sorter/review");
+
+        assertThat(failed).containsOnlyKeys("<gone@test>");
+        assertThat(failed.get("<gone@test>")).contains("not found in INBOX");
+        assertThat(subjectsIn("Archive")).containsExactly("one");
     }
 }

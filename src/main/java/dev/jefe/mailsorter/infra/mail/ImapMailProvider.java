@@ -50,21 +50,19 @@ public final class ImapMailProvider implements MailProvider {
     private final Store store;
     private final String archiveFolder;
     private final String trashFolder;
-    private final String host;
-    private final String username;
+    private final String accountKey;
     /** User folders filed into during this session; searched too so read/restore still find moved mail. */
     private final Set<String> userFolders = ConcurrentHashMap.newKeySet();
 
-    ImapMailProvider(Store store, String host, String username) {
-        this(store, "Archive", "Trash", host, username);
+    ImapMailProvider(Store store, String accountKey) {
+        this(store, "Archive", "Trash", accountKey);
     }
 
-    ImapMailProvider(Store store, String archiveFolder, String trashFolder, String host, String username) {
+    ImapMailProvider(Store store, String archiveFolder, String trashFolder, String accountKey) {
         this.store = store;
         this.archiveFolder = archiveFolder;
         this.trashFolder = trashFolder;
-        this.host = host;
-        this.username = username;
+        this.accountKey = accountKey;
     }
 
     @Override
@@ -183,7 +181,7 @@ public final class ImapMailProvider implements MailProvider {
         }
     }
 
-    @Override public String accountId() { return username + "@" + host; }
+    @Override public String accountId() { return accountKey; }
     @Override public void markProcessed(String id) { onMessage(id, (f, m) -> m.setFlags(new Flags(PROCESSED_FLAG), true)); }
     @Override public void archive(String id) { onMessage(id, (f, m) -> moveTo(f, m, archiveFolder)); }
     @Override public void moveToTrash(String id) { onMessage(id, (f, m) -> moveTo(f, m, trashFolder)); }
@@ -191,8 +189,8 @@ public final class ImapMailProvider implements MailProvider {
     @Override public void addLabel(String id, String label) { onMessage(id, (f, m) -> m.setFlags(new Flags(label), true)); }
     @Override public void removeLabel(String id, String label) { onMessage(id, (f, m) -> m.setFlags(new Flags(label), false)); }
     @Override
-    public Set<String> applyAll(List<MailOperation> ops, String reviewLabel) {
-        Set<String> failed = new HashSet<>();
+    public Map<String, String> applyAll(List<MailOperation> ops, String reviewLabel) {
+        Map<String, String> failed = new LinkedHashMap<>();
         if (ops.isEmpty()) return failed;
 
         try {
@@ -205,17 +203,19 @@ public final class ImapMailProvider implements MailProvider {
                 Map<Message, String> idOf = new IdentityHashMap<>();
                 for (MailOperation op : ops) {
                     Message m = byId.get(op.emailId());
-                    if (m == null) { failed.add(op.emailId()); continue; }
+                    if (m == null) { failed.put(op.emailId(), "not found in INBOX (already moved or deleted?)"); continue; }
                     idOf.put(m, op.emailId());
                     byTarget.computeIfAbsent(new Target(op.action(), op.folder()), k -> new ArrayList<>()).add(m);
                 }
 
                 for (Map.Entry<Target, List<Message>> entry : byTarget.entrySet()) {
                     Message[] group = entry.getValue().toArray(Message[]::new);
+                    Target target = entry.getKey();
+                    String step = "set the processed marker '" + PROCESSED_FLAG + "'";
                     try {
                         // Flag first: COPY/MOVE preserves flags, so moved mail keeps the marker.
                         inbox.setFlags(group, new Flags(PROCESSED_FLAG), true);
-                        Target target = entry.getKey();
+                        step = describe(target, reviewLabel);
                         switch (target.action()) {
                             case ARCHIVE -> moveAll(inbox, group, archiveFolder);
                             case MOVE_TO_FOLDER -> {
@@ -227,7 +227,10 @@ public final class ImapMailProvider implements MailProvider {
                             case KEEP -> { }
                         }
                     } catch (MessagingException e) {
-                        for (Message m : group) failed.add(idOf.get(m));
+                        String reason = "could not " + step + ": " + e.getMessage();
+                        AppLog.warn(ImapMailProvider.class, reason + " (" + group.length + " message(s), "
+                                + accountKey + ")");
+                        for (Message m : group) failed.put(idOf.get(m), reason);
                         try { // best effort: let the next run retry them
                             inbox.setFlags(group, new Flags(PROCESSED_FLAG), false);
                         } catch (MessagingException ignored) { }
@@ -246,6 +249,16 @@ public final class ImapMailProvider implements MailProvider {
 
     /** One bulk IMAP operation per distinct action and destination folder. */
     private record Target(Action action, String folder) {}
+
+    private String describe(Target target, String reviewLabel) {
+        return switch (target.action()) {
+            case ARCHIVE -> "move to '" + archiveFolder + "'";
+            case MOVE_TO_TRASH -> "move to '" + trashFolder + "'";
+            case MOVE_TO_FOLDER -> "move to '" + target.folder() + "'";
+            case FLAG_FOR_REVIEW -> "set the review flag '" + reviewLabel + "'";
+            case KEEP -> "keep";
+        };
+    }
 
     private List<String> searchOrder() {
         List<String> order = new ArrayList<>(List.of(INBOX, archiveFolder, trashFolder));

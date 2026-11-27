@@ -35,7 +35,7 @@ public final class ImapMailProviderFactory implements MailProviderFactory {
         try {
             Store store = Session.getInstance(props).getStore(protocol);
             store.connect(config.host(), config.port(), config.username(), config.secret());
-            return new ImapMailProvider(store, config.host(), config.username());
+            return new ImapMailProvider(store, config.accountKey());
         } catch (MessagingException e) {
             var ex = new ConnectionFailedException(
                     "Could not connect to " + config.host() + ":" + config.port() + " – " + e.getMessage(), e);

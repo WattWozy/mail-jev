@@ -243,4 +243,16 @@ class ApplyPlanServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(new MailOperation("1", Action.ARCHIVE, "Ikea").folder()).isNull();
     }
+
+    @Test
+    void aFailureCarriesTheReasonTheMailboxGave() {
+        mailbox.withEmails(email("1"));
+        classifier.answer("1", Category.NEWSLETTER, 0.97);
+        mailbox.failing.add("1");
+
+        var result = apply.execute(ApplyCommand.of(plan().id()));
+
+        assertThat(result.failures()).extracting(ApplyResult.Failure::message)
+                .containsExactly("simulated failure for 1");
+    }
 }

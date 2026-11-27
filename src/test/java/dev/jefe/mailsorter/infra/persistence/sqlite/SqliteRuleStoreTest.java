@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SqliteRuleStoreTest {
 
+    private static final String GMX = "gmx|me@gmx.com";
+    private static final String GMAIL = "gmail|me@gmail.com";
+
     @TempDir Path dir;
     private SqliteRuleStore store;
 
@@ -29,9 +32,9 @@ class SqliteRuleStoreTest {
         var rule = new PrefilterRule("r1", RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER,
                 Category.OTHER, "Shops/Ikea");
 
-        store.save(rule);
+        store.save(GMX, rule);
 
-        assertThat(store.findAll()).containsExactly(rule);
+        assertThat(store.findAll(GMX)).containsExactly(rule);
     }
 
     @Test
@@ -39,9 +42,9 @@ class SqliteRuleStoreTest {
         var rule = new PrefilterRule("r1", RuleField.SUBJECT_CONTAINS, "invoice", Action.KEEP,
                 Category.INVOICE, null);
 
-        store.save(rule);
+        store.save(GMX, rule);
 
-        assertThat(store.findAll()).containsExactly(rule);
+        assertThat(store.findAll(GMX)).containsExactly(rule);
     }
 
     @Test
@@ -49,17 +52,29 @@ class SqliteRuleStoreTest {
         var first = new PrefilterRule("a", RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea");
         var second = new PrefilterRule("b", RuleField.SUBJECT_CONTAINS, "sofa", Action.ARCHIVE, Category.OTHER, null);
 
-        store.save(first);
-        store.save(second);
+        store.save(GMX, first);
+        store.save(GMX, second);
 
-        assertThat(store.findAll()).containsExactly(first, second);
+        assertThat(store.findAll(GMX)).containsExactly(first, second);
     }
 
     @Test
     void deletesById() {
-        store.save(new PrefilterRule("r1", RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea"));
+        store.save(GMX, new PrefilterRule("r1", RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea"));
 
-        assertThat(store.deleteById("r1")).isTrue();
-        assertThat(store.findAll()).isEmpty();
+        assertThat(store.deleteById(GMX, "r1")).isTrue();
+        assertThat(store.findAll(GMX)).isEmpty();
+    }
+
+    @Test
+    void accountsDoNotSeeEachOthersRules() {
+        var gmx = new PrefilterRule("a", RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea");
+        var gmail = new PrefilterRule("b", RuleField.FROM_DOMAIN, "ikea.com", Action.ARCHIVE, Category.OTHER, null);
+        store.save(GMX, gmx);
+        store.save(GMAIL, gmail);
+
+        assertThat(store.findAll(GMX)).containsExactly(gmx);
+        assertThat(store.findAll(GMAIL)).containsExactly(gmail);
+        assertThat(store.deleteById(GMAIL, "a")).isFalse();
     }
 }

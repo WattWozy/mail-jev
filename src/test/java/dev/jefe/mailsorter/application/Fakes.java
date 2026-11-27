@@ -26,6 +26,12 @@ public final class Fakes {
     static final class FakeClassifier implements Classifier {
         final Map<String, Classification> answers = new HashMap<>();
         final Set<String> failing = new HashSet<>();
+        final List<String> accounts = Collections.synchronizedList(new ArrayList<>());
+
+        @Override public Classification classify(Email email, String accountId) {
+            accounts.add(accountId);
+            return classify(email);
+        }
 
         FakeClassifier answer(String emailId, Category c, double confidence) {
             answers.put(emailId, new Classification(c, confidence, "fake"));

@@ -4,9 +4,9 @@ import dev.jefe.mailsorter.domain.model.UserFolder;
 
 import java.util.List;
 
-/** Driven port. User folders in the order they were created. */
+/** Driven port. Folders belong to one account ("service|username") and keep their creation order. */
 public interface FolderRepository {
-    List<UserFolder> findAll();
-    void save(UserFolder folder);
-    boolean deleteById(String id);
+    List<UserFolder> findAll(String accountId);
+    void save(String accountId, UserFolder folder);
+    boolean deleteById(String accountId, String id);
 }

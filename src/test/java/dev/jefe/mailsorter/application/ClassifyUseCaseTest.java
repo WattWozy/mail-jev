@@ -1,5 +1,9 @@
 package dev.jefe.mailsorter.application;
 
+import java.util.List;
+import dev.jefe.mailsorter.application.service.prefilter.rules.RuleField;
+import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
+import dev.jefe.mailsorter.application.service.prefilter.PreFilteringClassifier;
 import dev.jefe.mailsorter.application.Fakes.FakeClassifier;
 
 import dev.jefe.mailsorter.application.Fakes.InMemoryConnectionStore;
@@ -170,5 +174,32 @@ class ClassifyUseCaseTest {
 
         assertThat(entry.classification().folder()).isEqualTo("Ikea");
         assertThat(entry.action()).isEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
+    @Test
+    void theClassifierIsToldWhichAccountTheMailBelongsTo() {
+        mailbox.withEmails(email("1"));
+        classifier.answer("1", Category.NEWSLETTER, 0.97);
+
+        classify.execute(new ClassifyCommand(10));
+
+        assertThat(classifier.accounts).containsExactly("you@fakemail.com");
+    }
+
+    // -- rules end to end -----------------------------------------------------------
+
+    @Test
+    void aRulesActionEndsUpInThePlan() {
+        mailbox.withEmails(new Email("1", "Finextra <research@finextra.com>", "Weekly research", "snippet", Map.of()));
+        var trashFinextra = new PrefilterRule("r1", RuleField.FROM_ADDRESS, "research@finextra.com",
+                Action.MOVE_TO_TRASH, Category.OTHER, null);
+        var withRules = new ClassifyService(store, new PreFilteringClassifier(classifier, List.of(),
+                account -> List.of(trashFinextra)),
+                new PolicyEngine(Map.of(), 0.9), plans);
+
+        var entry = withRules.execute(new ClassifyCommand(10)).entries().get(0);
+
+        assertThat(entry.action()).isEqualTo(Action.MOVE_TO_TRASH); // was KEEP: the rule's action was ignored
+        assertThat(entry.classification().source()).isEqualTo(dev.jefe.mailsorter.domain.model.ClassificationSource.RULE);
     }
 }

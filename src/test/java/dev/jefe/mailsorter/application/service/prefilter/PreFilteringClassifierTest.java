@@ -84,6 +84,55 @@ class PreFilteringClassifierTest {
         assertThat(delegateCalls).hasValue(0);
     }
 
+    // -- per account ----------------------------------------------------------------
+
+    private final Map<String, List<PrefilterRule>> userRules = new java.util.HashMap<>();
+    private final AtomicInteger lookups = new AtomicInteger();
+    private final PreFilteringClassifier perAccount = new PreFilteringClassifier(
+            delegate, List.of(new InvoiceSignalRule()),
+            account -> { lookups.incrementAndGet(); return userRules.getOrDefault(account, List.of()); });
+
+    private static PrefilterRule ikeaRule() {
+        return new PrefilterRule("r1", RuleField.FROM_DOMAIN, "shop.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea");
+    }
+
+    @Test
+    void aUsersRuleOnlyAppliesToItsOwnAccount() {
+        userRules.put("gmx|me@gmx.com", List.of(ikeaRule()));
+
+        assertThat(perAccount.classify(email("Sofa sale", Map.of()), "gmx|me@gmx.com").folder()).isEqualTo("Ikea");
+        assertThat(perAccount.classify(email("Sofa sale", Map.of()), "gmail|me@gmail.com").reason()).isEqualTo("delegate");
+    }
+
+    @Test
+    void userRulesRunBeforeTheBuiltIns() {
+        userRules.put("gmx|me@gmx.com", List.of(ikeaRule()));
+
+        var result = perAccount.classify(email("Your invoice #123", Map.of()), "gmx|me@gmx.com");
+
+        assertThat(result.folder()).isEqualTo("Ikea");
+    }
+
+    @Test
+    void rulesAreLookedUpOncePerAccountUntilTheyChange() {
+        perAccount.classify(email("a", Map.of()), "gmx|me@gmx.com");
+        perAccount.classify(email("b", Map.of()), "gmx|me@gmx.com");
+        assertThat(lookups).hasValue(1);
+
+        userRules.put("gmx|me@gmx.com", List.of(ikeaRule()));
+        perAccount.rulesChanged();
+
+        assertThat(perAccount.classify(email("c", Map.of()), "gmx|me@gmx.com").folder()).isEqualTo("Ikea");
+        assertThat(lookups).hasValue(2);
+    }
+
+    @Test
+    void withoutAnAccountOnlyTheBuiltInsApply() {
+        userRules.put("gmx|me@gmx.com", List.of(ikeaRule()));
+
+        assertThat(perAccount.classify(email("Sofa sale", Map.of())).reason()).isEqualTo("delegate");
+    }
+
     @Test
     void aDelegatedResultIsMarkedAsComingFromTheModel() {
         var result = classifier.classify(email("Lunch tomorrow?", Map.of()));

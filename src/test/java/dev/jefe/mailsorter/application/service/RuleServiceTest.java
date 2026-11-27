@@ -7,12 +7,15 @@ import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.infra.persistence.memory.InMemoryRuleStore;
+import dev.jefe.mailsorter.application.exception.NotConnectedException;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryConnectionStore;
+import dev.jefe.mailsorter.testsupport.FakeMailProvider;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,9 +23,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RuleServiceTest {
 
+    private static final String GMX = "gmx|me@gmx.com";
+    private static final String GMAIL = "gmail|me@gmail.com";
+
     private final InMemoryRuleStore repository = new InMemoryRuleStore();
-    private final List<List<PrefilterRule>> published = new ArrayList<>();
-    private final RuleService service = new RuleService(repository, published::add);
+    private final InMemoryConnectionStore connections = new InMemoryConnectionStore();
+    private final AtomicInteger changes = new AtomicInteger();
+    private final RuleService service = new RuleService(repository, connections, changes::incrementAndGet);
+
+    @BeforeEach
+    void connectGmx() {
+        connections.save(new FakeMailProvider(GMX));
+    }
 
     private static Email from(String sender) {
         return new Email("1", sender, "Your new sofa", "snippet", Map.of());
@@ -62,7 +74,7 @@ class RuleServiceTest {
                 new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", Action.MOVE_TO_FOLDER, null, " ")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("folder");
-        assertThat(repository.findAll()).isEmpty();
+        assertThat(repository.findAll(GMX)).isEmpty();
     }
 
     @ParameterizedTest
@@ -96,12 +108,62 @@ class RuleServiceTest {
     }
 
     @Test
-    void changesArePublishedToTheClassifier() {
+    void everyChangeIsAnnouncedToTheClassifier() {
         var rule = service.execute(new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Ikea"));
         service.execute(rule.id());
 
-        assertThat(published).hasSize(2);
-        assertThat(published.get(0)).containsExactly(rule);
-        assertThat(published.get(1)).isEmpty();
+        assertThat(changes).hasValue(2);
+    }
+
+    // -- per account ----------------------------------------------------------------
+
+    @Test
+    void rulesBelongToTheConnectedAccount() {
+        var rule = service.execute(new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Ikea"));
+
+        connections.save(new FakeMailProvider(GMAIL));
+
+        assertThat(service.execute()).isEmpty();
+        assertThat(service.rulesFor(GMX)).containsExactly(rule);
+        assertThat(service.rulesFor(GMAIL)).isEmpty();
+    }
+
+    @Test
+    void anotherAccountsRuleCannotBeDeleted() {
+        var rule = service.execute(new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Ikea"));
+        connections.save(new FakeMailProvider(GMAIL));
+
+        assertThatThrownBy(() -> service.execute(rule.id())).isInstanceOf(IllegalArgumentException.class);
+        assertThat(service.rulesFor(GMX)).containsExactly(rule);
+    }
+
+    @Test
+    void managingRulesNeedsAConnectedAccount() {
+        var disconnected = new RuleService(repository, new InMemoryConnectionStore(), () -> {});
+
+        assertThatThrownBy(disconnected::execute).isInstanceOf(NotConnectedException.class);
+    }
+
+    // -- rule actions ---------------------------------------------------------------
+
+    @Test
+    void aRuleCarriesItsActionIntoTheClassification() {
+        var rule = service.execute(new AddRuleCommand(RuleField.FROM_ADDRESS, "research@finextra.com",
+                Action.MOVE_TO_TRASH, null, null));
+
+        var classification = rule.apply(from("Finextra <research@finextra.com>")).orElseThrow();
+
+        assertThat(classification.action()).isEqualTo(Action.MOVE_TO_TRASH);
+        assertThat(classification.folder()).isNull();
+    }
+
+    @Test
+    void aFolderRuleCarriesItsFolderNotAnAction() {
+        var rule = service.execute(new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Ikea"));
+
+        var classification = rule.apply(from("news@ikea.com")).orElseThrow();
+
+        assertThat(classification.action()).isNull();
+        assertThat(classification.folder()).isEqualTo("Ikea");
     }
 }

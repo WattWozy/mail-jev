@@ -24,6 +24,11 @@ public class FakeMailProvider implements MailProvider {
     public final List<List<MailOperation>> applyCalls = new ArrayList<>();
 
     public final AtomicInteger closeCalls = new AtomicInteger();
+    private final String accountId;
+
+    public FakeMailProvider() { this("you@fakemail.com"); }
+
+    public FakeMailProvider(String accountId) { this.accountId = accountId; }
     public volatile RuntimeException closeFailure;
 
     public void withEmails(Email... emails) {
@@ -53,7 +58,7 @@ public class FakeMailProvider implements MailProvider {
 
     @Override
     public String accountId() {
-        return "you@fakemail.com";
+        return accountId;
     }
 
     @Override
@@ -103,15 +108,19 @@ public class FakeMailProvider implements MailProvider {
     }
 
     @Override
-    public Set<String> applyAll(List<MailOperation> ops, String reviewLabel) {
+    public Map<String, String> applyAll(List<MailOperation> ops, String reviewLabel) {
         applyCalls.add(List.copyOf(ops));
-        Set<String> failed = new HashSet<>();
+        Map<String, String> failed = new LinkedHashMap<>();
         Set<String> inInbox = inbox.stream().map(Email::id).collect(Collectors.toSet());
 
         for (MailOperation op : ops) {
             String id = op.emailId();
-            if (failing.contains(id) || !inInbox.contains(id)) {
-                failed.add(id);
+            if (failing.contains(id)) {
+                failed.put(id, "simulated failure for " + id);
+                continue;
+            }
+            if (!inInbox.contains(id)) {
+                failed.put(id, "not found in INBOX");
                 continue;
             }
             markProcessed(id);

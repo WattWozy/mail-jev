@@ -4,6 +4,9 @@ import dev.jefe.mailsorter.application.port.in.dto.AddRuleCommand;
 import dev.jefe.mailsorter.application.port.in.AddRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.DeleteRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.ListRulesUseCase;
+import dev.jefe.mailsorter.application.exception.NotConnectedException;
+import dev.jefe.mailsorter.application.port.out.ConnectionStore;
+import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
 import dev.jefe.mailsorter.domain.model.Action;
@@ -14,26 +17,28 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 public final class RuleService implements ListRulesUseCase, AddRuleUseCase, DeleteRuleUseCase {
 
     private final RuleRepository repository;
-    private final Consumer<List<PrefilterRule>> onRulesChanged;
+    private final ConnectionStore connections;
+    private final Runnable onRulesChanged;
 
-    public RuleService(RuleRepository repository, Consumer<List<PrefilterRule>> onRulesChanged) {
+    /** Rules are managed for the connected account; {@code onRulesChanged} runs after every change. */
+    public RuleService(RuleRepository repository, ConnectionStore connections, Runnable onRulesChanged) {
         this.repository = Objects.requireNonNull(repository);
+        this.connections = Objects.requireNonNull(connections);
         this.onRulesChanged = Objects.requireNonNull(onRulesChanged);
     }
 
-    /** Call once in CompositionRoot after constructing the classifier. */
-    public void reload() {
-        onRulesChanged.accept(repository.findAll());
+    /** The rules of one account, for the classifier. */
+    public List<PrefilterRule> rulesFor(String accountId) {
+        return repository.findAll(accountId);
     }
 
     @Override
     public List<PrefilterRule> execute() {
-        return repository.findAll();
+        return repository.findAll(activeAccount());
     }
 
     @Override
@@ -64,8 +69,8 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
                 folder
         );
 
-        repository.save(rule);
-        reload();
+        repository.save(activeAccount(), rule);
+        onRulesChanged.run();
         return rule;
     }
 
@@ -74,11 +79,15 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
         if (ruleId == null || ruleId.isBlank()) {
             throw new IllegalArgumentException("ruleId is required");
         }
-        boolean deleted = repository.deleteById(ruleId.trim());
+        boolean deleted = repository.deleteById(activeAccount(), ruleId.trim());
         if (!deleted) {
             throw new IllegalArgumentException("Unknown rule: " + ruleId);
         }
-        reload();
+        onRulesChanged.run();
+    }
+
+    private String activeAccount() {
+        return connections.current().map(MailProvider::accountId).orElseThrow(NotConnectedException::new);
     }
 
     private static String normalize(String pattern) {

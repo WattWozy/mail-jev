@@ -702,7 +702,7 @@
 </fieldset>
 
 <details class="rules-panel" id="rules-panel">
-    <summary>Prefilter Rules (<span id="rules-count">0</span>) — deterministic rules run before JEV</summary>
+    <summary>Prefilter Rules (<span id="rules-count">0</span>) for <span class="active-account">no account</span> — deterministic rules run before JEV</summary>
     <div class="rule-form">
         <select id="rule-field" title="Match field">
             <option value="FROM_DOMAIN">From domain</option>
@@ -717,7 +717,7 @@
             <option value="FLAG_FOR_REVIEW">FLAG_FOR_REVIEW</option>
         </select>
         <input id="rule-category" placeholder="Category (Rule)" size="14">
-        <input id="rule-folder" placeholder="→ Folder (optional), e.g. Ikea" size="22"
+        <input id="rule-folder" list="folder-options" placeholder="→ Folder (optional), e.g. Ikea" size="22"
                title="File matching mail into this folder (created if missing). Overrides the action.">
         <button id="add-rule-btn" type="button">Add rule</button>
     </div>
@@ -728,6 +728,23 @@
         </table>
     </div>
 </details>
+
+<details class="rules-panel" id="folders-panel">
+    <summary>Folders (<span id="folders-count">0</span>) for <span class="active-account">no account</span> — jev sorts matching mail into these</summary>
+    <div class="rule-form">
+        <input id="folder-name" placeholder="Folder name, e.g. Travel promotions" size="26">
+        <input id="folder-description" maxlength="300" size="60"
+               placeholder="What belongs here, in one sentence: e.g. Flight, hotel and holiday deals">
+        <button id="add-folder-btn" type="button">Add folder</button>
+    </div>
+    <div class="rules-list">
+        <table>
+            <thead><tr><th>Folder</th><th>Description</th><th></th></tr></thead>
+            <tbody id="folders-tbody"></tbody>
+        </table>
+    </div>
+</details>
+<datalist id="folder-options"></datalist>
 
 <fieldset>
     <legend>2. Plan &amp; Apply</legend>
@@ -1108,7 +1125,7 @@
     async function loadRules() {
         try {
             const res = await fetch('/api/rules');
-            if (!res.ok) return;
+            if (!res.ok) { renderRules([]); return; }   // 409 = no account connected
             const data = await res.json();
             renderRules(Array.isArray(data) ? data : (data.rules || []));
         } catch (_) { /* ignore if rules endpoint not yet wired */ }
@@ -1134,6 +1151,70 @@
             $('rule-folder').value = '';
             await loadRules();
             show('Prefilter rule saved.');
+        } catch (err) {
+            show(err.message, true);
+        }
+    };
+
+    // ── Folders (jev sorts into these) ──────────────────
+
+    function renderFolders(folders) {
+        const list = Array.isArray(folders) ? folders : [];
+        $('folders-count').textContent = list.length;
+
+        $('folder-options').replaceChildren(...list.map(f => {
+            const o = document.createElement('option');
+            o.value = f.name;
+            return o;
+        }));
+
+        $('folders-tbody').replaceChildren(...list.map(f => {
+            const tr = document.createElement('tr');
+            cell(tr, f.name);
+            cell(tr, f.description);
+
+            const delTd = document.createElement('td');
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn-sm';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Delete folder (mail already in it stays there)';
+            delBtn.onclick = async () => {
+                try {
+                    await api(`/api/folders/${encodeURIComponent(f.id)}`, undefined, 'DELETE');
+                    await loadFolders();
+                    show('Folder removed. Mail already filed there stays where it is.');
+                } catch (err) {
+                    show(err.message, true);
+                }
+            };
+            delTd.appendChild(delBtn);
+            tr.appendChild(delTd);
+            return tr;
+        }));
+    }
+
+    async function loadFolders() {
+        try {
+            const res = await fetch('/api/folders');
+            if (!res.ok) { renderFolders([]); return; } // 409 = no account connected
+            renderFolders(await res.json());
+        } catch (_) { /* ignore if folders endpoint not reachable */ }
+    }
+
+    $('add-folder-btn').onclick = async () => {
+        const name = $('folder-name').value.trim();
+        const description = $('folder-description').value.trim();
+        if (!name || !description) {
+            show('Enter a folder name and a one-sentence description of what belongs there.', true);
+            return;
+        }
+        try {
+            await api('/api/folders', { name, description });
+            $('folder-name').value = '';
+            $('folder-description').value = '';
+            await loadFolders();
+            show(`Folder "${name}" saved.`);
         } catch (err) {
             show(err.message, true);
         }
@@ -1240,6 +1321,12 @@
             sel.replaceChildren();
 
             const hasActive = accounts.some(a => a.status === 'ACTIVE');
+            const active = accounts.find(a => a.status === 'ACTIVE');
+            document.querySelectorAll('.active-account').forEach(el => {
+                el.textContent = active ? active.username : 'no account';
+            });
+            loadRules();
+            loadFolders();
             if (!hasActive) {
                 const placeholder = new Option('Select an account…', '', true, true);
                 placeholder.disabled = true;
@@ -1601,6 +1688,7 @@
     loadAccounts();
     loadStats();
     loadRules();
+    loadFolders();
     loadAutopilotStatus();
     connectEvents();
 </script>

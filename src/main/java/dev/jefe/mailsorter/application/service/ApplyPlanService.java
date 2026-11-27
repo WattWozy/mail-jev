@@ -46,7 +46,7 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
                 .toList();
 
         // One bulk round-trip (the fast path you built this morning)
-        Set<String> failedIds = mailbox.applyAll(ops, REVIEW_LABEL);
+        Map<String, String> failed = mailbox.applyAll(ops, REVIEW_LABEL);
 
         Map<Action, Long> applied = new EnumMap<>(Action.class);
         List<ApplyResult.Failure> failures = new ArrayList<>();
@@ -54,8 +54,8 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
 
         for (Plan.Entry e : plan.entries()) {
             Action action = command.overrides().getOrDefault(e.emailId(), e.action());
-            if (failedIds.contains(e.emailId())) {
-                failures.add(new ApplyResult.Failure(e.emailId(), "mailbox operation failed"));
+            if (failed.containsKey(e.emailId())) {
+                failures.add(new ApplyResult.Failure(e.emailId(), failed.get(e.emailId())));
             } else {
                 boolean overridden = action != e.action();
                 audit.record(e.emailId(), e.classification(), action, overridden);

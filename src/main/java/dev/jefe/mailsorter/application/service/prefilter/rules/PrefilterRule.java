@@ -23,7 +23,9 @@ public record PrefilterRule(
             return Optional.empty();
         }
         String reason = "Matched rule: " + field.name() + " = " + pattern;
-        return Optional.of(new Classification(category, 1.0, reason).withFolder(folder));
+        // a folder rule files the mail; any other rule asks for its own action
+        var classification = new Classification(category, 1.0, reason).withFolder(folder);
+        return Optional.of(folder != null ? classification : classification.withAction(action));
     }
 
     private boolean matches(Email email) {
