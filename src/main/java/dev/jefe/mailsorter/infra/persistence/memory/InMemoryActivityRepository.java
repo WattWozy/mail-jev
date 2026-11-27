@@ -19,23 +19,27 @@ public final class InMemoryActivityRepository implements ActivityRepository {
     }
 
     @Override
-    public synchronized List<ActivityEntry> recent(int limit) {
+    public synchronized List<ActivityEntry> recent(String accountId, int limit) {
         return entries.reversed().stream()               // stable sort: latest insert first on equal timestamps
+                .filter(e -> accountId == null || accountId.equals(e.accountId()))
                 .sorted(Comparator.comparing(ActivityEntry::timestamp).reversed())
                 .limit(limit)
                 .toList();
     }
 
     @Override
-    public synchronized StatsSnapshot stats() {
+    public synchronized StatsSnapshot stats(String accountId) {
+        List<ActivityEntry> scoped = entries.stream()
+                .filter(e -> accountId == null || accountId.equals(e.accountId()))
+                .toList();
         return new StatsSnapshot(
-                entries.size(),
-                count(ClassificationSource.RULE),
-                count(ClassificationSource.MODEL),
-                entries.stream().filter(ActivityEntry::overridden).count());
+                scoped.size(),
+                count(scoped, ClassificationSource.RULE),
+                count(scoped, ClassificationSource.MODEL),
+                scoped.stream().filter(ActivityEntry::overridden).count());
     }
 
-    private long count(ClassificationSource source) {
-        return entries.stream().filter(e -> e.source() == source).count();
+    private static long count(List<ActivityEntry> scoped, ClassificationSource source) {
+        return scoped.stream().filter(e -> e.source() == source).count();
     }
 }

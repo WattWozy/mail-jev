@@ -6,6 +6,8 @@ import dev.jefe.mailsorter.application.port.in.DeleteRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.ListRulesUseCase;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.application.port.out.ConnectionStore;
+import dev.jefe.mailsorter.application.port.out.FolderRepository;
+import dev.jefe.mailsorter.domain.model.UserFolder;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
@@ -21,12 +23,18 @@ import java.util.UUID;
 public final class RuleService implements ListRulesUseCase, AddRuleUseCase, DeleteRuleUseCase {
 
     private final RuleRepository repository;
+    private final FolderRepository folders;
     private final ConnectionStore connections;
     private final Runnable onRulesChanged;
 
-    /** Rules are managed for the connected account; {@code onRulesChanged} runs after every change. */
-    public RuleService(RuleRepository repository, ConnectionStore connections, Runnable onRulesChanged) {
+    /**
+     * Rules are managed for the connected account and may only file into that account's defined folders.
+     * {@code onRulesChanged} runs after every change.
+     */
+    public RuleService(RuleRepository repository, FolderRepository folders, ConnectionStore connections,
+                       Runnable onRulesChanged) {
         this.repository = Objects.requireNonNull(repository);
+        this.folders = Objects.requireNonNull(folders);
         this.connections = Objects.requireNonNull(connections);
         this.onRulesChanged = Objects.requireNonNull(onRulesChanged);
     }
@@ -47,7 +55,8 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
         if (command.field() == null) {
             throw new IllegalArgumentException("field is required");
         }
-        String folder = FolderNames.validate(command.folder());
+        String account = activeAccount();
+        String folder = definedFolder(account, FolderNames.validate(command.folder()));
         if (folder == null && command.action() == Action.MOVE_TO_FOLDER) {
             throw new IllegalArgumentException("folder is required to move mail to a folder");
         }
@@ -69,7 +78,7 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
                 folder
         );
 
-        repository.save(activeAccount(), rule);
+        repository.save(account, rule);
         onRulesChanged.run();
         return rule;
     }
@@ -84,6 +93,17 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
             throw new IllegalArgumentException("Unknown rule: " + ruleId);
         }
         onRulesChanged.run();
+    }
+
+    /** The defined folder's own spelling, so the mailbox gets one folder however the rule spelled it. */
+    private String definedFolder(String account, String requested) {
+        if (requested == null) return null;
+        return folders.findAll(account).stream()
+                .map(UserFolder::name)
+                .filter(requested::equalsIgnoreCase)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown folder '" + requested + "': create it in Folders first"));
     }
 
     private String activeAccount() {

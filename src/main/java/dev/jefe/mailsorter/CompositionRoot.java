@@ -87,7 +87,8 @@ public final class CompositionRoot {
 
         var jev = new JevClassifier(
                 new JevClient(new JevConfig(config.jevEndpoint(), config.jevApiKey(), Duration.ofSeconds(10))),
-                500);
+                500,
+                folderRepository::findAll);   // each account's folders are offered to jev as extra choices
 
         // Rules are per account: the classifier asks for the account's own rules (first) on demand.
         var preFilteringClassifier = new PreFilteringClassifier(jev, builtinRules, ruleRepository::findAll);
@@ -101,13 +102,16 @@ public final class CompositionRoot {
 
         var classifyService = new ClassifyService(store, classifier, policy, planStore);
 
-        var ruleService = new RuleService(ruleRepository, store, () -> {
+        var ruleService = new RuleService(ruleRepository, folderRepository, store, () -> {
             preFilteringClassifier.rulesChanged();
             classifyService.forgetCachedClassifications(); // a new rule must apply to mail already seen
         });
 
         // Step 3 hands the folders to jev; until then they are only stored.
-        var folderService = new FolderService(folderRepository, store, () -> { });
+        var folderService = new FolderService(folderRepository, ruleRepository, store, () -> {
+            jev.foldersChanged();
+            classifyService.forgetCachedClassifications(); // a new folder must apply to mail already seen
+        });
         var applyService = new ApplyPlanService(store, planStore, auditLog, activityRepository, Clock.systemUTC());
         var events = new SseBroadcaster();
 
@@ -128,7 +132,7 @@ public final class CompositionRoot {
                 ruleService,
                 folderService,
                 autopilot,
-                new ActivityService(activityRepository),
+                new ActivityService(activityRepository, store),
                 events
         );
     }

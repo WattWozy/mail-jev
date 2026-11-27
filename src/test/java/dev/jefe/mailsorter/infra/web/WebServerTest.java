@@ -136,8 +136,9 @@ class WebServerTest {
         };
 
         RuleRepository testRuleRepo = new InMemoryRuleStore();
-        RuleService ruleService = new RuleService(testRuleRepo, connectionStore, () -> {});
-        FolderService folderService = new FolderService(new InMemoryFolderStore(), connectionStore, () -> {});
+        var testFolderRepo = new InMemoryFolderStore();
+        RuleService ruleService = new RuleService(testRuleRepo, testFolderRepo, connectionStore, () -> {});
+        FolderService folderService = new FolderService(testFolderRepo, testRuleRepo, connectionStore, () -> {});
 
         ApplyPlanUseCase apply = command -> new ApplyResult(Map.of(), List.of());
         GetEmailUseCase getEmail = Fakes::fakeEmail;
@@ -151,7 +152,7 @@ class WebServerTest {
                 new InMemoryAutopilotSettingsStore(), noopScheduler, events, Clock.systemUTC());
 
         activityRepo = new InMemoryActivityRepository();
-        ActivityUseCase activity = new ActivityService(activityRepo);
+        ActivityUseCase activity = new ActivityService(activityRepo, connectionStore);
 
         web = new WebServer("127.0.0.1", 0, accountService, classify, apply, getEmail, ruleService, folderService,
                 autopilot, activity, events);
@@ -372,6 +373,8 @@ class WebServerTest {
     @Test
     void aRuleCanFileMailIntoAFolderWithoutNamingAnAction() throws Exception {
         connectGmx();
+        post("/api/folders", """
+            {"name":"Ikea","description":"IKEA offers"}""");
         var response = post("/api/rules", """
             {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Ikea"}""");
 
@@ -493,10 +496,10 @@ class WebServerTest {
     @Test
     void rulesAndFoldersBelongToTheConnectedAccount() throws Exception {
         connectGmx();
-        post("/api/rules", """
-            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Ikea"}""");
         post("/api/folders", """
             {"name":"Ikea","description":"IKEA offers"}""");
+        post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Ikea"}""");
 
         connectGmail();
         assertThat(json.readTree(get("/api/rules").body())).isEmpty();
@@ -524,5 +527,73 @@ class WebServerTest {
     void rulesAndFoldersNeedAConnectedAccount() throws Exception {
         assertThat(get("/api/rules").statusCode()).isEqualTo(409);
         assertThat(get("/api/folders").statusCode()).isEqualTo(409);
+    }
+
+    // -- folder integrity -------------------------------------------------------------
+
+    private HttpResponse<String> put(String path, String body) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + web.port() + path))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        return http.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void deletingAFolderThatRulesUseIs409AndNamesTheRules() throws Exception {
+        connectGmx();
+        var id = json.readTree(post("/api/folders", """
+            {"name":"Ikea","description":"IKEA offers"}""").body()).get("id").asText();
+        post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Ikea"}""");
+
+        var response = delete("/api/folders/" + id);
+
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("ikea.com");
+    }
+
+    @Test
+    void aRuleForAnUndefinedFolderIs400() throws Exception {
+        connectGmx();
+
+        var response = post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Nope"}""");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void aFolderDescriptionCanBeEdited() throws Exception {
+        connectGmx();
+        var id = json.readTree(post("/api/folders", """
+            {"name":"Ikea","description":"IKEA offers"}""").body()).get("id").asText();
+
+        var response = put("/api/folders/" + id, """
+            {"description":"Anything from or about IKEA"}""");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(get("/api/folders").body()).get(0).get("description").asText())
+                .isEqualTo("Anything from or about IKEA");
+    }
+
+    // -- activity per account -------------------------------------------------------
+
+    @Test
+    void theFeedAndStatsShowOnlyTheConnectedAccount() throws Exception {
+        connectGmail();
+        String gmail = null;
+        for (var account : json.readTree(get("/api/accounts").body())) {
+            if ("ACTIVE".equals(account.get("status").asText())) gmail = account.get("id").asText();
+        }
+        recordActivity("gmx-mail", ClassificationSource.RULE);                       // gmx|me@gmx.com
+        activityRepo.record(new ActivityEntry(Instant.parse("2026-11-26T21:00:00Z"), gmail,
+                "gmail-mail", "a@b.com", "s", Category.PROMOTION, 0.9, "r", Action.MOVE_TO_TRASH,
+                ClassificationSource.MODEL, false));
+
+        var rows = json.readTree(get("/api/activity?limit=10").body());
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("emailId").asText()).isEqualTo("gmail-mail");
+        assertThat(json.readTree(get("/api/stats").body()).get("totalSorted").asLong()).isEqualTo(1);
     }
 }

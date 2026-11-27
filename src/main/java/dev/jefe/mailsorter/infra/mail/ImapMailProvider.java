@@ -282,10 +282,52 @@ public final class ImapMailProvider implements MailProvider {
         };
     }
 
-    private List<String> searchOrder() {
-        List<String> order = new ArrayList<>(List.of(INBOX, archiveFolder, trashFolder));
-        userFolders.stream().filter(f -> !order.contains(f)).sorted().forEach(order::add);
-        return order;
+    /**
+     * INBOX, Archive, Trash and the user folders filed into this session first; only when the message is in none
+     * of those, every other folder holding mail (e.g. user folders filed into before a restart).
+     */
+    private Iterable<String> searchOrder() {
+        List<String> known = new ArrayList<>(List.of(INBOX, archiveFolder, trashFolder));
+        userFolders.stream().filter(f -> !known.contains(f)).sorted().forEach(known::add);
+        return () -> new Iterator<>() {
+            private Iterator<String> current = known.iterator();
+            private boolean expanded;
+
+            @Override public boolean hasNext() {
+                if (current.hasNext()) return true;
+                if (expanded) return false;
+                expanded = true;
+                current = otherFolders(known).iterator();
+                return current.hasNext();
+            }
+
+            @Override public String next() {
+                if (!hasNext()) throw new NoSuchElementException();
+                return current.next();
+            }
+        };
+    }
+
+    /**
+     * Every other folder that holds mail. Gmail's system folders are skipped: "[Gmail]/All Mail" holds every
+     * message, and moving one out of it would delete it from Gmail.
+     */
+    private List<String> otherFolders(List<String> known) {
+        try {
+            List<String> names = new ArrayList<>();
+            for (Folder f : store.getDefaultFolder().list("*")) {
+                String name = f.getFullName();
+                boolean holdsMail = (f.getType() & Folder.HOLDS_MESSAGES) != 0;
+                boolean system = name.startsWith("[Gmail]") || name.startsWith("[Google Mail]");
+                if (holdsMail && !system && known.stream().noneMatch(name::equalsIgnoreCase)) {
+                    names.add(name);
+                }
+            }
+            return names;
+        } catch (MessagingException e) {
+            AppLog.warn(ImapMailProvider.class, "Could not list folders for " + accountKey + ": " + e.getMessage());
+            return List.of();
+        }
     }
 
     private static void move(IMAPFolder from, List<Message> msgs, Folder to) throws MessagingException {

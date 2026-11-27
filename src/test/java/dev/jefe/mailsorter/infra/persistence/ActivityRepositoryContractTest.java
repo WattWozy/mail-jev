@@ -76,4 +76,17 @@ public abstract class ActivityRepositoryContractTest {
 
         assertThat(repo.stats()).isEqualTo(new StatsSnapshot(4, 2, 1, 1));
     }
+
+    @Test
+    void recentAndStatsCanBeScopedToOneAccount() {
+        repo.record(entry("gmx-1", 0, ClassificationSource.RULE, false));
+        repo.record(new ActivityEntry(T0.plusSeconds(5), "gmail|me@gmail.com", "gmail-1", "a@b.com", "s",
+                Category.PROMOTION, 0.9, "r", Action.MOVE_TO_TRASH, ClassificationSource.MODEL, true));
+
+        assertThat(repo.recent("gmx|me@gmx.com", 10)).extracting(ActivityEntry::emailId).containsExactly("gmx-1");
+        assertThat(repo.recent("gmail|me@gmail.com", 10)).extracting(ActivityEntry::emailId).containsExactly("gmail-1");
+        assertThat(repo.stats("gmail|me@gmail.com")).isEqualTo(new StatsSnapshot(1, 0, 1, 1));
+        assertThat(repo.recent(null, 10)).hasSize(2);
+        assertThat(repo.stats(null)).isEqualTo(new StatsSnapshot(2, 1, 1, 1));
+    }
 }

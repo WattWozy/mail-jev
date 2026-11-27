@@ -466,6 +466,13 @@
         .KEEP { background: var(--badge-keep); }
         .FLAG_FOR_REVIEW { background: var(--badge-review); }
 
+        .when {
+            color: var(--muted, #888);
+            font-variant-numeric: tabular-nums;
+            margin-right: .4rem;
+            white-space: nowrap;
+        }
+
         .src-tag {
             display: inline-block;
             font-size: .7rem;
@@ -717,8 +724,9 @@
             <option value="FLAG_FOR_REVIEW">FLAG_FOR_REVIEW</option>
         </select>
         <input id="rule-category" placeholder="Category (Rule)" size="14">
-        <input id="rule-folder" list="folder-options" placeholder="→ Folder (optional), e.g. Ikea" size="22"
-               title="File matching mail into this folder (created if missing). Overrides the action.">
+        <select id="rule-folder" title="File matching mail into one of your folders. Overrides the action.">
+            <option value="">→ no folder (use the action)</option>
+        </select>
         <button id="add-rule-btn" type="button">Add rule</button>
     </div>
     <div class="rules-list">
@@ -744,7 +752,6 @@
         </table>
     </div>
 </details>
-<datalist id="folder-options"></datalist>
 
 <fieldset>
     <legend>2. Plan &amp; Apply</legend>
@@ -1054,10 +1061,15 @@
                     tag.textContent = src;
                     reasonCell.appendChild(tag);
                 }
-                const rText = document.createTextNode(
-                    [e.reason, e.timestamp || e.createdAt].filter(Boolean).join(' · ')
-                );
-                reasonCell.appendChild(rText);
+                const ts = e.timestamp || e.createdAt;
+                if (ts) {
+                    const when = document.createElement('span');
+                    when.className = 'when';
+                    when.textContent = new Date(ts).toLocaleString([], {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                    reasonCell.prepend(when);
+                }
+                reasonCell.appendChild(document.createTextNode(e.reason ?? ''));
                 reasonCell.title = reasonCell.textContent;
                 tr.appendChild(reasonCell);
 
@@ -1162,11 +1174,11 @@
         const list = Array.isArray(folders) ? folders : [];
         $('folders-count').textContent = list.length;
 
-        $('folder-options').replaceChildren(...list.map(f => {
-            const o = document.createElement('option');
-            o.value = f.name;
-            return o;
-        }));
+        const picked = $('rule-folder').value;
+        $('rule-folder').replaceChildren(
+            new Option('→ no folder (use the action)', ''),
+            ...list.map(f => new Option('→ ' + f.name, f.name)));
+        $('rule-folder').value = list.some(f => f.name === picked) ? picked : '';
 
         $('folders-tbody').replaceChildren(...list.map(f => {
             const tr = document.createElement('tr');
@@ -1174,6 +1186,24 @@
             cell(tr, f.description);
 
             const delTd = document.createElement('td');
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'btn-sm';
+            editBtn.textContent = '✎';
+            editBtn.title = 'Edit what belongs in this folder (jev sorts by it)';
+            editBtn.onclick = async () => {
+                const description = prompt(`What belongs in "${f.name}"? One sentence.`, f.description);
+                if (description === null || description.trim() === f.description) return;
+                try {
+                    await api(`/api/folders/${encodeURIComponent(f.id)}`, { description }, 'PUT');
+                    await loadFolders();
+                    show(`Description of "${f.name}" saved.`);
+                } catch (err) {
+                    show(err.message, true);
+                }
+            };
+            delTd.appendChild(editBtn);
+
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'btn-sm';
@@ -1226,9 +1256,11 @@
         if (!pattern) return;
 
         const field = domain ? 'FROM_DOMAIN' : 'FROM_ADDRESS';
+        const known = [...$('rule-folder').options].map(o => o.value).filter(Boolean);
         const folderAnswer = prompt(
-            `File all mail from "${pattern}" into which folder?
-(Leave empty to use the action instead.)`, '');
+            `File all mail from "${pattern}" into which folder?\n`
+            + (known.length ? `Your folders: ${known.join(', ')}\n` : 'You have no folders yet: create one under Folders.\n')
+            + '(Leave empty to use the action instead.)', '');
         if (folderAnswer === null) return; // cancelled
         const folder = folderAnswer.trim();
         const current = selectedCurrentAction || 'ARCHIVE';
@@ -1327,6 +1359,8 @@
             });
             loadRules();
             loadFolders();
+            loadStats();                                  // stats and feed are per account too
+            if (viewingActivityFeed) loadActivityFeed();
             if (!hasActive) {
                 const placeholder = new Option('Select an account…', '', true, true);
                 placeholder.disabled = true;

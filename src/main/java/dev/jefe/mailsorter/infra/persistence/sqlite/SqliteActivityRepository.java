@@ -28,6 +28,7 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
             SELECT at, account_id, email_id, sender, subject, category, confidence,
                    reason, action, source, overridden, folder
             FROM activity
+            WHERE (? IS NULL OR account_id = ?)
             ORDER BY at DESC, id DESC
             LIMIT ?
             """;
@@ -38,6 +39,7 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
                    COALESCE(SUM(CASE WHEN source = 'MODEL' THEN 1 END), 0)  AS model_hits,
                    COALESCE(SUM(overridden), 0)                             AS overrides
             FROM activity
+            WHERE (? IS NULL OR account_id = ?)
             """;
 
     public SqliteActivityRepository {
@@ -66,9 +68,11 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
     }
 
     @Override
-    public List<ActivityEntry> recent(int limit) {
+    public List<ActivityEntry> recent(String accountId, int limit) {
         try (var con = db.connection(); var ps = con.prepareStatement(RECENT)) {
-            ps.setInt(1, limit);
+            ps.setString(1, accountId);
+            ps.setString(2, accountId);
+            ps.setInt(3, limit);
             try (var rs = ps.executeQuery()) {
                 List<ActivityEntry> out = new ArrayList<>();
                 while (rs.next()) out.add(map(rs));
@@ -80,11 +84,15 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
     }
 
     @Override
-    public StatsSnapshot stats() {
-        try (var con = db.connection(); var ps = con.prepareStatement(STATS); var rs = ps.executeQuery()) {
-            rs.next();
-            return new StatsSnapshot(rs.getLong("total"), rs.getLong("rule_hits"),
-                    rs.getLong("model_hits"), rs.getLong("overrides"));
+    public StatsSnapshot stats(String accountId) {
+        try (var con = db.connection(); var ps = con.prepareStatement(STATS)) {
+            ps.setString(1, accountId);
+            ps.setString(2, accountId);
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                return new StatsSnapshot(rs.getLong("total"), rs.getLong("rule_hits"),
+                        rs.getLong("model_hits"), rs.getLong("overrides"));
+            }
         } catch (SQLException ex) {
             throw failure("Could not load stats", ex);
         }

@@ -75,7 +75,8 @@ public final class PolicyEngine {
         defaults.put(Action.KEEP, 0.50);
         defaults.put(Action.FLAG_FOR_REVIEW, 0.0);
         defaults.put(Action.ARCHIVE, fallback); // e.g. 0.65 - 0.70
-        defaults.put(Action.MOVE_TO_FOLDER, fallback);
+        // filing deletes nothing and is easy to undo, so it needs less certainty than archiving or trashing
+        defaults.put(Action.MOVE_TO_FOLDER, Math.min(fallback, 0.70));
         defaults.put(Action.MOVE_TO_TRASH, Math.max(fallback, 0.85));
         return defaults;
     }

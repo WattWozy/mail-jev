@@ -19,6 +19,11 @@ public final class FolderNames {
         if (name.equalsIgnoreCase("INBOX")) {
             throw invalid(name, "is the inbox itself");
         }
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.equals("archive") || lower.equals("trash")
+                || lower.equals("mail-sorter") || lower.startsWith("mail-sorter/")) {
+            throw invalid(name, "is reserved for the app's own folders");
+        }
         if (name.startsWith("/") || name.endsWith("/") || name.contains("//")) {
             throw invalid(name, "has an empty folder level");
         }

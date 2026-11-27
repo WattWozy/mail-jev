@@ -8,4 +8,5 @@ public interface FolderUseCase {
     List<UserFolder> list();
     UserFolder add(String name, String description);
     void delete(String folderId);
+    UserFolder updateDescription(String folderId, String description);
 }

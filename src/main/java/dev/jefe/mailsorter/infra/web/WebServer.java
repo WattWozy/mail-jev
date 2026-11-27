@@ -9,6 +9,7 @@ import com.sun.net.httpserver.HttpServer;
 import dev.jefe.mailsorter.application.exception.AccountNotFoundException;
 import dev.jefe.mailsorter.application.exception.ConnectionFailedException;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
+import dev.jefe.mailsorter.application.exception.FolderInUseException;
 import dev.jefe.mailsorter.application.exception.PlanNotFoundException;
 import dev.jefe.mailsorter.application.port.in.*;
 import dev.jefe.mailsorter.application.port.in.dto.*;
@@ -302,6 +303,15 @@ public final class WebServer implements AutoCloseable {
                 } catch (JsonProcessingException e) {
                     r = new Response(400, Map.of("error", String.valueOf(e.getOriginalMessage())));
                 }
+            } else if ("PUT".equals(method) && path.startsWith("/api/folders/")) {
+                String id = path.substring("/api/folders/".length());
+                try {
+                    JsonNode body = json.readTree(exchange.getRequestBody());
+                    r = guarded(() -> new Response(200, folders.updateDescription(id,
+                            body.path("description").asText(""))));
+                } catch (JsonProcessingException e) {
+                    r = new Response(400, Map.of("error", String.valueOf(e.getOriginalMessage())));
+                }
             } else if ("DELETE".equals(method) && path.startsWith("/api/folders/")) {
                 String id = path.substring("/api/folders/".length());
                 r = guarded(() -> {
@@ -489,7 +499,7 @@ public final class WebServer implements AutoCloseable {
             return logic.get();
         } catch (IllegalArgumentException e) {
             return new Response(400, Map.of("error", String.valueOf(e.getMessage())));
-        } catch (NotConnectedException e) {
+        } catch (NotConnectedException | FolderInUseException e) {
             return new Response(409, Map.of("error", e.getMessage()));
         } catch (PlanNotFoundException | AccountNotFoundException e) {
             return new Response(404, Map.of("error", e.getMessage()));

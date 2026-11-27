@@ -88,6 +88,27 @@ class PolicyEngineTest {
     }
 
     @Test
+    void aFolderMoveNeedsLessCertaintyThanArchivingBecauseItIsHarmless() {
+        var result = engine.decide(new Classification(Category.OTHER, 0.8, "jev").withFolder("Ads"));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_FOLDER); // the 0.9 threshold would flag it
+    }
+
+    @Test
+    void aFolderMoveBelowSeventyPercentIsStillFlagged() {
+        assertThat(engine.decide(new Classification(Category.OTHER, 0.69, "jev").withFolder("Ads")))
+                .isEqualTo(Action.FLAG_FOR_REVIEW);
+        assertThat(engine.decide(new Classification(Category.OTHER, 0.70, "jev").withFolder("Ads")))
+                .isEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
+    @Test
+    void archivingStillNeedsTheDefaultThreshold() {
+        assertThat(engine.decide(new Classification(Category.NEWSLETTER, 0.8, "jev")))
+                .isEqualTo(Action.FLAG_FOR_REVIEW);
+    }
+
+    @Test
     void withoutAFolderNothingIsMovedToAFolder() {
         var result = engine.decide(new Classification(Category.OTHER, 1.0, "rule"));
 

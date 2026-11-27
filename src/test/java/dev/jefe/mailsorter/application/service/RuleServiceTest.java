@@ -7,6 +7,8 @@ import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.infra.persistence.memory.InMemoryRuleStore;
+import dev.jefe.mailsorter.infra.persistence.memory.InMemoryFolderStore;
+import dev.jefe.mailsorter.domain.model.UserFolder;
 import dev.jefe.mailsorter.application.exception.NotConnectedException;
 import dev.jefe.mailsorter.infra.persistence.memory.InMemoryConnectionStore;
 import dev.jefe.mailsorter.testsupport.FakeMailProvider;
@@ -27,13 +29,17 @@ class RuleServiceTest {
     private static final String GMAIL = "gmail|me@gmail.com";
 
     private final InMemoryRuleStore repository = new InMemoryRuleStore();
+    private final InMemoryFolderStore folders = new InMemoryFolderStore();
     private final InMemoryConnectionStore connections = new InMemoryConnectionStore();
     private final AtomicInteger changes = new AtomicInteger();
-    private final RuleService service = new RuleService(repository, connections, changes::incrementAndGet);
+    private final RuleService service = new RuleService(repository, folders, connections, changes::incrementAndGet);
 
     @BeforeEach
     void connectGmx() {
         connections.save(new FakeMailProvider(GMX));
+        folders.save(GMX, new UserFolder("f1", "Ikea", "IKEA offers"));
+        folders.save(GMX, new UserFolder("f2", "Travel Promotions", "Flight deals"));
+        folders.save(GMX, new UserFolder("f3", "Shops/Ikea", "IKEA orders"));
     }
 
     private static Email from(String sender) {
@@ -54,7 +60,7 @@ class RuleServiceTest {
     @Test
     void theFolderNameKeepsTheUsersSpellingWhileThePatternIsNormalized() {
         var rule = service.execute(new AddRuleCommand(
-                RuleField.SUBJECT_CONTAINS, "  Flight DEAL ", null, Category.PROMOTION, "  Travel Promotions "));
+                RuleField.SUBJECT_CONTAINS, "  Flight DEAL ", null, Category.PROMOTION, "  travel PROMOTIONS "));
 
         assertThat(rule.pattern()).isEqualTo("flight deal");
         assertThat(rule.folder()).isEqualTo("Travel Promotions");
@@ -139,7 +145,7 @@ class RuleServiceTest {
 
     @Test
     void managingRulesNeedsAConnectedAccount() {
-        var disconnected = new RuleService(repository, new InMemoryConnectionStore(), () -> {});
+        var disconnected = new RuleService(repository, folders, new InMemoryConnectionStore(), () -> {});
 
         assertThatThrownBy(disconnected::execute).isInstanceOf(NotConnectedException.class);
     }
@@ -165,5 +171,33 @@ class RuleServiceTest {
 
         assertThat(classification.action()).isNull();
         assertThat(classification.folder()).isEqualTo("Ikea");
+    }
+
+    // -- rules use defined folders ----------------------------------------------------
+
+    @Test
+    void aRuleCanOnlyFileIntoADefinedFolder() {
+        assertThatThrownBy(() -> service.execute(
+                new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Nope")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Nope")
+                .hasMessageContaining("Folders");
+        assertThat(repository.findAll(GMX)).isEmpty();
+    }
+
+    @Test
+    void aRuleUsesTheFoldersOwnSpellingSoThereIsOnlyOneFolderInTheMailbox() {
+        var rule = service.execute(new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "ikea"));
+
+        assertThat(rule.folder()).isEqualTo("Ikea");
+    }
+
+    @Test
+    void anotherAccountsFolderCannotBeUsed() {
+        folders.save(GMAIL, new UserFolder("g1", "Gmail only", "x"));
+
+        assertThatThrownBy(() -> service.execute(
+                new AddRuleCommand(RuleField.FROM_DOMAIN, "ikea.com", null, null, "Gmail only")))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

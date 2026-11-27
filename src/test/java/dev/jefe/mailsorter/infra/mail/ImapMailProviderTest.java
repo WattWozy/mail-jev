@@ -353,4 +353,25 @@ class ImapMailProviderTest {
         assertThat(failed).containsOnlyKeys("<m1@test>");
         assertThat(subjectsIn("Archive")).containsExactly("news");
     }
+
+    // -- after a restart -------------------------------------------------------------
+
+    private MailProvider reconnect() {
+        return new ImapMailProviderFactory().connect(new MailboxConfig(
+                "imap", "127.0.0.1", greenMail.getImap().getPort(), "me@example.com", "secret",
+                Map.of("ssl", "false")));
+    }
+
+    @Test
+    void afterARestartMailInAUserFolderCanStillBeReadAndRestored() throws Exception {
+        deliver("<m1@test>", "sofa", "x", Map.of());
+        provider.applyAll(List.of(new MailOperation("<m1@test>", Action.MOVE_TO_FOLDER, "Ikea")), "mail-sorter/review");
+
+        var restarted = reconnect();   // a new session knows nothing about "Ikea"
+
+        assertThat(restarted.read("<m1@test>").subject()).isEqualTo("sofa");
+        restarted.restoreToInbox("<m1@test>");
+        assertThat(subjectsIn("INBOX")).containsExactly("sofa");
+        assertThat(subjectsIn("Ikea")).isEmpty();
+    }
 }
