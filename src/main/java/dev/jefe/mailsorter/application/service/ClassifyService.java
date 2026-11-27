@@ -78,6 +78,11 @@ public final class ClassifyService implements ClassifyUseCase {
         return plan;
     }
 
+    /** Call when the rules change: cached results were computed under the old rules. */
+    public void forgetCachedClassifications() {
+        cache.clear();
+    }
+
     private List<EvaluatedEmail> evaluateAll(List<Email> emails, String accountId) {
         Semaphore limiter = new Semaphore(maxConcurrency);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {

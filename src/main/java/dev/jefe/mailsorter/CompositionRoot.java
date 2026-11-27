@@ -88,16 +88,6 @@ public final class CompositionRoot {
         var preFilteringClassifier = new PreFilteringClassifier(jev, builtinRules);
         Classifier classifier = preFilteringClassifier;
 
-        var ruleService = new RuleService(ruleRepository, userRules -> {
-            List<Rule> combined = new ArrayList<>(builtinRules.size() + userRules.size());
-            combined.addAll(builtinRules);
-            combined.addAll(userRules);
-            preFilteringClassifier.replaceRules(combined);
-        });
-
-        // Load persisted SQLite rules immediately on startup
-        ruleService.reload();
-
         var policy = new PolicyEngine(Map.of(
                 Category.NEWSLETTER, Action.ARCHIVE,
                 Category.SOCIAL, Action.ARCHIVE,
@@ -105,6 +95,18 @@ public final class CompositionRoot {
                 Category.SPAM, Action.MOVE_TO_TRASH), 0.9);
 
         var classifyService = new ClassifyService(store, classifier, policy, planStore);
+
+        // User rules first: what the user explicitly asked for beats the built-in heuristics.
+        var ruleService = new RuleService(ruleRepository, userRules -> {
+            List<Rule> combined = new ArrayList<>(userRules.size() + builtinRules.size());
+            combined.addAll(userRules);
+            combined.addAll(builtinRules);
+            preFilteringClassifier.replaceRules(combined);
+            classifyService.forgetCachedClassifications(); // a new rule must apply to mail already seen
+        });
+
+        // Load persisted SQLite rules immediately on startup
+        ruleService.reload();
         var applyService = new ApplyPlanService(store, planStore, auditLog, activityRepository, Clock.systemUTC());
         var events = new SseBroadcaster();
 

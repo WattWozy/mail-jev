@@ -6,6 +6,8 @@ import com.icegreen.greenmail.util.GreenMailUtil;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import dev.jefe.mailsorter.application.exception.MailAccessException;
 import dev.jefe.mailsorter.application.port.out.MailProvider;
+import dev.jefe.mailsorter.application.port.out.dto.MailOperation;
+import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.domain.config.MailboxConfig;
 import jakarta.mail.*;
@@ -226,5 +228,58 @@ class ImapMailProviderTest {
 
         provider.removeLabel("<m1@test>", "mail-sorter/review");
         assertThat(userFlagsIn("INBOX", "one")).doesNotContain("mail-sorter/review");
+    }
+
+    // -- user folders -------------------------------------------------------------
+
+    @Test
+    void applyAllFilesMessagesIntoUserFoldersCreatedOnDemand() throws Exception {
+        deliver("<m1@test>", "sofa", "x", Map.of());
+        deliver("<m2@test>", "flight deal", "x", Map.of());
+        deliver("<m3@test>", "lamp", "x", Map.of());
+
+        var failed = provider.applyAll(List.of(
+                new MailOperation("<m1@test>", Action.MOVE_TO_FOLDER, "Ikea"),
+                new MailOperation("<m2@test>", Action.MOVE_TO_FOLDER, "Travel promotions"),
+                new MailOperation("<m3@test>", Action.MOVE_TO_FOLDER, "Ikea")), "mail-sorter/review");
+
+        assertThat(failed).isEmpty();
+        assertThat(subjectsIn("INBOX")).isEmpty();
+        assertThat(subjectsIn("Ikea")).containsExactlyInAnyOrder("sofa", "lamp");
+        assertThat(subjectsIn("Travel promotions")).containsExactly("flight deal");
+    }
+
+    @Test
+    void aFiledMessageKeepsItsProcessedMarker() throws Exception {
+        deliver("<m1@test>", "sofa", "x", Map.of());
+
+        provider.applyAll(List.of(new MailOperation("<m1@test>", Action.MOVE_TO_FOLDER, "Ikea")), "mail-sorter/review");
+
+        assertThat(userFlagsIn("Ikea", "sofa")).contains("mail-sorter-processed");
+    }
+
+    @Test
+    void foldersAndOtherActionsMixInOneBatch() throws Exception {
+        deliver("<m1@test>", "sofa", "x", Map.of());
+        deliver("<m2@test>", "news", "x", Map.of());
+
+        provider.applyAll(List.of(
+                new MailOperation("<m1@test>", Action.MOVE_TO_FOLDER, "Ikea"),
+                new MailOperation("<m2@test>", Action.ARCHIVE)), "mail-sorter/review");
+
+        assertThat(subjectsIn("Ikea")).containsExactly("sofa");
+        assertThat(subjectsIn("Archive")).containsExactly("news");
+    }
+
+    @Test
+    void aFiledMessageCanStillBeReadAndRestored() throws Exception {
+        deliver("<m1@test>", "sofa", "x", Map.of());
+        provider.applyAll(List.of(new MailOperation("<m1@test>", Action.MOVE_TO_FOLDER, "Ikea")), "mail-sorter/review");
+
+        assertThat(provider.read("<m1@test>").subject()).isEqualTo("sofa");
+
+        provider.restoreToInbox("<m1@test>");
+        assertThat(subjectsIn("INBOX")).containsExactly("sofa");
+        assertThat(subjectsIn("Ikea")).isEmpty();
     }
 }

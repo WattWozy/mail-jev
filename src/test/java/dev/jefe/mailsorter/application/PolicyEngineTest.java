@@ -57,6 +57,43 @@ class PolicyEngineTest {
         assertThat(result).isEqualTo(Action.KEEP);
     }
 
+    // -- user folders -------------------------------------------------------------
+
+    @Test
+    void movesToTheUserFolderNamedByTheClassification() {
+        var result = engine.decide(new Classification(Category.OTHER, 1.0, "rule").withFolder("Ikea"));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
+    @Test
+    void aUserFolderWinsOverTheCategoryAction() {
+        var result = engine.decide(new Classification(Category.PROMOTION, 0.95, "rule").withFolder("Travel promotions"));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_FOLDER); // not MOVE_TO_TRASH
+    }
+
+    @Test
+    void aProtectedCategoryCanStillBeFiledIntoAUserFolder() {
+        var result = engine.decide(new Classification(Category.INVOICE, 0.99, "rule").withFolder("Invoices"));
+
+        assertThat(result).isEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
+    @Test
+    void anUnsureUserFolderMatchIsFlaggedForReview() {
+        var result = engine.decide(new Classification(Category.OTHER, 0.5, "model").withFolder("Ikea"));
+
+        assertThat(result).isEqualTo(Action.FLAG_FOR_REVIEW);
+    }
+
+    @Test
+    void withoutAFolderNothingIsMovedToAFolder() {
+        var result = engine.decide(new Classification(Category.OTHER, 1.0, "rule"));
+
+        assertThat(result).isNotEqualTo(Action.MOVE_TO_FOLDER);
+    }
+
     @Test
     void rejectsInvalidThreshold() {
         assertThatThrownBy(() -> new PolicyEngine(Map.of(), 1.5))

@@ -36,13 +36,11 @@ public final class PolicyEngine {
     }
 
     public Action decide(Classification c) {
-        if (c.category() == Category.UNKNOWN) {
-            return Action.FLAG_FOR_REVIEW;
-        }
-
-        Action configured = actions.getOrDefault(c.category(), Action.KEEP);
-        if (PROTECTED.contains(c.category()) && configured == Action.MOVE_TO_TRASH) {
-            configured = Action.KEEP;
+        // The user said where this belongs: that beats the category. Filing is never destructive,
+        // so protected categories may be filed too.
+        Action configured = c.folder() != null ? Action.MOVE_TO_FOLDER : actionFor(c);
+        if (configured == Action.FLAG_FOR_REVIEW) {
+            return configured;
         }
 
         double required = actionThresholds.getOrDefault(configured, defaultThreshold);
@@ -53,11 +51,24 @@ public final class PolicyEngine {
         return configured;
     }
 
+    private Action actionFor(Classification c) {
+        if (c.category() == Category.UNKNOWN) {
+            return Action.FLAG_FOR_REVIEW;
+        }
+
+        Action configured = actions.getOrDefault(c.category(), Action.KEEP);
+        if (PROTECTED.contains(c.category()) && configured == Action.MOVE_TO_TRASH) {
+            configured = Action.KEEP;
+        }
+        return configured;
+    }
+
     private static Map<Action, Double> defaultThresholds(double fallback) {
         Map<Action, Double> defaults = new EnumMap<>(Action.class);
         defaults.put(Action.KEEP, 0.50);
         defaults.put(Action.FLAG_FOR_REVIEW, 0.0);
         defaults.put(Action.ARCHIVE, fallback); // e.g. 0.65 - 0.70
+        defaults.put(Action.MOVE_TO_FOLDER, fallback);
         defaults.put(Action.MOVE_TO_TRASH, Math.max(fallback, 0.85));
         return defaults;
     }

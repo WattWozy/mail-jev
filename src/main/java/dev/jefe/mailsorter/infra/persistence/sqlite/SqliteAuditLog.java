@@ -13,8 +13,8 @@ import java.time.temporal.ChronoUnit;
 public record SqliteAuditLog(SqliteDatabase db) implements AuditLog {
 
     private static final String INSERT = """
-    INSERT INTO audit_log(at, email_id, category, confidence, reason, action, dry_run)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO audit_log(at, email_id, category, confidence, reason, action, dry_run, folder)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """;
 
     @Override
@@ -27,6 +27,7 @@ public record SqliteAuditLog(SqliteDatabase db) implements AuditLog {
             ps.setString(5, c.reason());          // ← the missing one
             ps.setString(6, a.name());
             ps.setInt(7, dryRun ? 1 : 0);
+            ps.setString(8, a == Action.MOVE_TO_FOLDER ? c.folder() : null);
             ps.executeUpdate();
         } catch (SQLException e) {
             var ex = new PersistenceException("Could not write audit entry", e);

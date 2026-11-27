@@ -9,19 +9,21 @@ import dev.jefe.mailsorter.domain.model.Email;
 import java.util.Locale;
 import java.util.Optional;
 
+/** @param folder user folder that matching mail is filed into, or null for a plain category rule. */
 public record PrefilterRule(
         String id,
         RuleField field,
         String pattern,
         Action action,
-        Category category
+        Category category,
+        String folder
 ) implements Rule {
     public Optional<Classification> apply(Email email) {
         if (!matches(email)) {
             return Optional.empty();
         }
         String reason = "Matched rule: " + field.name() + " = " + pattern;
-        return Optional.of(new Classification(category, 1.0, reason));
+        return Optional.of(new Classification(category, 1.0, reason).withFolder(folder));
     }
 
     private boolean matches(Email email) {

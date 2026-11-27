@@ -3,6 +3,9 @@ package dev.jefe.mailsorter.application.service.prefilter;
 import dev.jefe.mailsorter.application.port.out.Classifier;
 import dev.jefe.mailsorter.application.service.prefilter.rules.InvoiceSignalRule;
 import dev.jefe.mailsorter.application.service.prefilter.rules.ListUnsubscribeRule;
+import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
+import dev.jefe.mailsorter.application.service.prefilter.rules.RuleField;
+import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
 import dev.jefe.mailsorter.domain.model.Classification;
 import dev.jefe.mailsorter.domain.model.ClassificationSource;
@@ -67,6 +70,18 @@ class PreFilteringClassifierTest {
         var result = classifier.classify(email("Your invoice #123", Map.of()));
 
         assertThat(result.source()).isEqualTo(ClassificationSource.RULE);
+    }
+
+    @Test
+    void aUserFolderRuleAheadOfTheBuiltInsDecidesAndKeepsItsFolder() {
+        var ikea = new PrefilterRule("r1", RuleField.FROM_DOMAIN, "shop.com", Action.MOVE_TO_FOLDER, Category.OTHER, "Ikea");
+        var withUserRulesFirst = new PreFilteringClassifier(delegate, List.of(ikea, new InvoiceSignalRule()));
+
+        var result = withUserRulesFirst.classify(email("Your invoice #123", Map.of()));
+
+        assertThat(result.folder()).isEqualTo("Ikea");
+        assertThat(result.source()).isEqualTo(ClassificationSource.RULE);
+        assertThat(delegateCalls).hasValue(0);
     }
 
     @Test

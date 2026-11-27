@@ -150,6 +150,7 @@ public final class WebServer implements AutoCloseable {
         m.put("action", e.action().name());
         m.put("source", e.source().name());
         m.put("overridden", e.overridden());
+        m.put("folder", e.folder());
         return m;
     }
 
@@ -285,6 +286,7 @@ public final class WebServer implements AutoCloseable {
         String pattern = body.path("pattern").asText("").trim();
         String actionRaw = body.path("action").asText("").trim();
         String categoryRaw = body.path("category").asText("").trim();
+        String folder = body.path("folder").asText("").trim();
 
         if (fieldRaw.isEmpty()) throw new IllegalArgumentException("field is required");
         if (pattern.isEmpty()) throw new IllegalArgumentException("pattern is required");
@@ -296,16 +298,18 @@ public final class WebServer implements AutoCloseable {
             throw new IllegalArgumentException("invalid field: " + fieldRaw);
         }
 
-        Action action;
-        try {
-            action = Action.valueOf(actionRaw.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("invalid action: " + actionRaw);
+        Action action = null; // optional for a folder rule: the service makes it MOVE_TO_FOLDER
+        if (!actionRaw.isEmpty()) {
+            try {
+                action = Action.valueOf(actionRaw.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("invalid action: " + actionRaw);
+            }
         }
 
         Category category = parseCategory(categoryRaw);
 
-        var created = addRule.execute(new AddRuleCommand(field, pattern, action, category));
+        var created = addRule.execute(new AddRuleCommand(field, pattern, action, category, folder));
         return new Response(201, created);
     }
 
@@ -389,6 +393,7 @@ public final class WebServer implements AutoCloseable {
             m.put("confidence", e.classification().confidence());
             m.put("reason", e.classification().reason());
             m.put("action", e.action().name());
+            m.put("folder", e.classification().folder());
             return m;
         }).toList();
         return Map.of(

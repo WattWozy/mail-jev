@@ -10,6 +10,7 @@ import dev.jefe.mailsorter.application.port.out.PlanStore;
 import dev.jefe.mailsorter.application.service.ClassifyService;
 import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.Classification;
 import dev.jefe.mailsorter.domain.model.Email;
 import dev.jefe.mailsorter.domain.policy.PolicyEngine;
 import dev.jefe.mailsorter.infra.persistence.memory.InMemoryPlanStore;
@@ -141,5 +142,33 @@ class ClassifyUseCaseTest {
 
         assertThat(entry.from()).isEqualTo("news@shop.com");
         assertThat(entry.subject()).isEqualTo("Weekly deals");
+    }
+
+    // -- caching ------------------------------------------------------------------
+
+    @Test
+    void aSecondPlanReusesTheCachedClassification() {
+        mailbox.withEmails(email("1"));
+        classifier.answer("1", Category.NEWSLETTER, 0.97);
+        classify.execute(new ClassifyCommand(10));
+        classifier.answer("1", Category.PROMOTION, 0.97);
+
+        var plan = classify.execute(new ClassifyCommand(10));
+
+        assertThat(plan.entries().get(0).classification().category()).isEqualTo(Category.NEWSLETTER);
+    }
+
+    @Test
+    void forgettingTheCacheMakesNewRulesApplyToMailAlreadySeen() {
+        mailbox.withEmails(email("1"));
+        classifier.answer("1", Category.NEWSLETTER, 0.97);
+        classify.execute(new ClassifyCommand(10));
+        classifier.answers.put("1", new Classification(Category.OTHER, 1.0, "rule").withFolder("Ikea"));
+
+        classify.forgetCachedClassifications();
+        var entry = classify.execute(new ClassifyCommand(10)).entries().get(0);
+
+        assertThat(entry.classification().folder()).isEqualTo("Ikea");
+        assertThat(entry.action()).isEqualTo(Action.MOVE_TO_FOLDER);
     }
 }

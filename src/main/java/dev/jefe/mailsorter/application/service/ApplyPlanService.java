@@ -42,9 +42,7 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
 
         // Build the final list of operations (respecting overrides)
         List<MailOperation> ops = plan.entries().stream()
-                .map(e -> new MailOperation(
-                        e.emailId(),
-                        command.overrides().getOrDefault(e.emailId(), e.action())))
+                .map(e -> operationFor(e, command.overrides()))
                 .toList();
 
         // One bulk round-trip (the fast path you built this morning)
@@ -73,19 +71,31 @@ public final class ApplyPlanService implements ApplyPlanUseCase {
     /** Best effort: the mailbox has already changed, a bookkeeping failure must not fail the apply. */
     private void recordActivity(Instant at, String accountId, Plan.Entry e, Action action, boolean overridden) {
         var c = e.classification();
+        String folder = action == Action.MOVE_TO_FOLDER ? c.folder() : null;
         try {
             activity.record(new ActivityEntry(at, accountId, e.emailId(), e.from(), e.subject(),
-                    c.category(), c.confidence(), c.reason(), action, c.source(), overridden));
+                    c.category(), c.confidence(), c.reason(), action, c.source(), overridden, folder));
         } catch (RuntimeException ex) {
             AppLog.warn(ApplyPlanService.class, "Could not record activity for " + e.emailId() + ": " + ex);
         }
     }
 
+    /** The destination folder always comes from the plan: an override can only pick the action. */
+    private static MailOperation operationFor(Plan.Entry e, Map<String, Action> overrides) {
+        Action action = overrides.getOrDefault(e.emailId(), e.action());
+        return new MailOperation(e.emailId(), action, e.classification().folder());
+    }
+
     private static void validate(Plan plan, Map<String, Action> overrides) {
-        Set<String> ids = plan.entries().stream().map(Plan.Entry::emailId).collect(Collectors.toSet());
-        for (String id : overrides.keySet()) {
-            if (!ids.contains(id)) throw new IllegalArgumentException("Override for an email not in the plan: " + id);
-        }
+        Map<String, Plan.Entry> byId = plan.entries().stream()
+                .collect(Collectors.toMap(Plan.Entry::emailId, e -> e, (a, b) -> a));
+        overrides.forEach((id, action) -> {
+            Plan.Entry entry = byId.get(id);
+            if (entry == null) throw new IllegalArgumentException("Override for an email not in the plan: " + id);
+            if (action == Action.MOVE_TO_FOLDER && entry.classification().folder() == null) {
+                throw new IllegalArgumentException("Cannot move " + id + " to a folder: the plan names no folder for it");
+            }
+        });
     }
 
     private static void perform(MailProvider mailbox, String id, Action action) {

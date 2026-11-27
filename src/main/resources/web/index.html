@@ -462,6 +462,7 @@
 
         .ARCHIVE { background: var(--badge-archive); }
         .MOVE_TO_TRASH { background: var(--badge-trash); }
+        .MOVE_TO_FOLDER { background: #5b4fc7; }
         .KEEP { background: var(--badge-keep); }
         .FLAG_FOR_REVIEW { background: var(--badge-review); }
 
@@ -716,11 +717,13 @@
             <option value="FLAG_FOR_REVIEW">FLAG_FOR_REVIEW</option>
         </select>
         <input id="rule-category" placeholder="Category (Rule)" size="14">
+        <input id="rule-folder" placeholder="→ Folder (optional), e.g. Ikea" size="22"
+               title="File matching mail into this folder (created if missing). Overrides the action.">
         <button id="add-rule-btn" type="button">Add rule</button>
     </div>
     <div class="rules-list">
         <table>
-            <thead><tr><th>Match</th><th>Pattern</th><th>Action</th><th>Category</th><th></th></tr></thead>
+            <thead><tr><th>Match</th><th>Pattern</th><th>Action</th><th>Category</th><th>Folder</th><th></th></tr></thead>
             <tbody id="rules-tbody"></tbody>
         </table>
     </div>
@@ -801,6 +804,22 @@
     let msgFadeTimer = null;
 
     const ACTIONS = ['KEEP', 'FLAG_FOR_REVIEW', 'ARCHIVE', 'MOVE_TO_TRASH'];
+
+    // Only entries the plan routed to a folder can cycle back to MOVE_TO_FOLDER.
+    function actionsFor(folder) {
+        return folder ? ['MOVE_TO_FOLDER', ...ACTIONS] : ACTIONS;
+    }
+
+    function actionLabel(action, folder) {
+        return action === 'MOVE_TO_FOLDER' && folder ? '→ ' + folder : action;
+    }
+
+    function setBadge(badge, action, folder) {
+        badge.dataset.action = action;
+        badge.textContent = actionLabel(action, folder);
+        badge.classList.remove(...ACTIONS, 'MOVE_TO_FOLDER');
+        badge.classList.add(action);
+    }
 
     const providers = {
         gmx:     { host: 'imap.gmx.com',          port: 993, ssl: true },
@@ -955,7 +974,7 @@
     function updateSummaryFromTable() {
         const counts = {};
         document.querySelectorAll('#rows .badge').forEach(b => {
-            const a = b.textContent;
+            const a = b.dataset.action || b.textContent;
             counts[a] = (counts[a] || 0) + 1;
         });
         renderSummary(counts);
@@ -1000,8 +1019,8 @@
                 const action = e.action || 'KEEP';
 
                 const badge = document.createElement('span');
-                badge.className = 'badge static-badge ' + action;
-                badge.textContent = action;
+                badge.className = 'badge static-badge';
+                setBadge(badge, action, e.folder);
                 const actionCell = document.createElement('td');
                 actionCell.appendChild(badge);
                 tr.appendChild(actionCell);
@@ -1055,13 +1074,14 @@
             cell(tr, r.pattern || '');
 
             const badge = document.createElement('span');
-            badge.className = 'badge static-badge ' + (r.action || 'KEEP');
-            badge.textContent = r.action || 'KEEP';
+            badge.className = 'badge static-badge';
+            setBadge(badge, r.action || 'KEEP', null);
             const actTd = document.createElement('td');
             actTd.appendChild(badge);
             tr.appendChild(actTd);
 
             cell(tr, r.category || 'Rule');
+            cell(tr, r.folder || '');
 
             const delTd = document.createElement('td');
             const delBtn = document.createElement('button');
@@ -1100,14 +1120,18 @@
             show('Enter a pattern for the prefilter rule.', true);
             return;
         }
+        const folder = $('rule-folder').value.trim();
         try {
             await api('/api/rules', {
                 field: $('rule-field').value,
                 pattern,
-                action: $('rule-action').value,
-                category: $('rule-category').value.trim() || 'Rule'
+                // a folder rule always moves to its folder; the server ignores the action then
+                action: folder ? 'MOVE_TO_FOLDER' : $('rule-action').value,
+                category: $('rule-category').value.trim() || 'Rule',
+                folder
             });
             $('rule-pattern').value = '';
+            $('rule-folder').value = '';
             await loadRules();
             show('Prefilter rule saved.');
         } catch (err) {
@@ -1121,18 +1145,25 @@
         if (!pattern) return;
 
         const field = domain ? 'FROM_DOMAIN' : 'FROM_ADDRESS';
-        const action = selectedCurrentAction || 'ARCHIVE';
+        const folderAnswer = prompt(
+            `File all mail from "${pattern}" into which folder?
+(Leave empty to use the action instead.)`, '');
+        if (folderAnswer === null) return; // cancelled
+        const folder = folderAnswer.trim();
+        const current = selectedCurrentAction || 'ARCHIVE';
+        const action = folder ? 'MOVE_TO_FOLDER' : (current === 'MOVE_TO_FOLDER' ? 'ARCHIVE' : current);
 
         try {
             await api('/api/rules', {
                 field,
                 pattern,
                 action,
-                category: 'Rule'
+                category: 'Rule',
+                folder
             });
             $('rules-panel').open = true;
             await loadRules();
-            show(`Rule created: ${field} "${pattern}" → ${action}`);
+            show(`Rule created: ${field} "${pattern}" → ${folder ? 'folder ' + folder : action}`);
         } catch (err) {
             show(err.message, true);
         }
@@ -1395,17 +1426,17 @@
 
             // 1. Action badge first
             const badge = document.createElement('span');
-            badge.className = 'badge ' + e.action;
-            badge.textContent = e.action;
+            badge.className = 'badge';
+            setBadge(badge, e.action, e.folder);
 
             if (key != null) {
                 badge.title = 'Click to change action';
                 badge.onclick = (ev) => {
                     ev.stopPropagation();
-                    const idx = ACTIONS.indexOf(badge.textContent);
-                    const next = ACTIONS[(idx + 1) % ACTIONS.length];
-                    badge.textContent = next;
-                    badge.className = 'badge ' + next;
+                    const cycle = actionsFor(e.folder);
+                    const idx = cycle.indexOf(badge.dataset.action);
+                    const next = cycle[(idx + 1) % cycle.length];
+                    setBadge(badge, next, e.folder);
                     overrides[key] = next;
                     if (selectedEmailId === key) selectedCurrentAction = next;
                     updateSummaryFromTable();
@@ -1443,7 +1474,7 @@
             tr.style.cursor = 'pointer';
             tr.onclick = () => tr.classList.contains('selected')
                 ? closePreview()
-                : openPreview(key, e.from, e.subject, badge.textContent, tr);
+                : openPreview(key, e.from, e.subject, badge.dataset.action, tr);
             return tr;
         }));
     }

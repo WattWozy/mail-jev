@@ -363,4 +363,59 @@ class WebServerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("<title>Mail Sorter</title>");
     }
+
+    // -- user folders -------------------------------------------------------------
+
+    @Test
+    void aRuleCanFileMailIntoAFolderWithoutNamingAnAction() throws Exception {
+        var response = post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"Ikea"}""");
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        var body = json.readTree(response.body());
+        assertThat(body.get("folder").asText()).isEqualTo("Ikea");
+        assertThat(body.get("action").asText()).isEqualTo("MOVE_TO_FOLDER");
+
+        var listed = json.readTree(get("/api/rules").body());
+        assertThat(listed.get(0).get("folder").asText()).isEqualTo("Ikea");
+    }
+
+    @Test
+    void anUnsafeFolderNameIs400() throws Exception {
+        var response = post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com","folder":"INBOX"}""");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.body()).contains("folder");
+    }
+
+    @Test
+    void aRuleWithoutFolderOrActionIs400() throws Exception {
+        var response = post("/api/rules", """
+            {"field":"FROM_DOMAIN","pattern":"ikea.com"}""");
+
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void activityShowsTheFolderAnEmailWasFiledInto() throws Exception {
+        activityRepo.record(new ActivityEntry(Instant.parse("2026-11-26T20:00:00Z"), "gmail|me@gmail.com", "1",
+                "news@ikea.com", "Your new sofa", Category.OTHER, 1.0, "rule",
+                Action.MOVE_TO_FOLDER, ClassificationSource.RULE, false, "Ikea"));
+
+        var row = json.readTree(get("/api/activity?limit=5").body()).get(0);
+
+        assertThat(row.get("action").asText()).isEqualTo("MOVE_TO_FOLDER");
+        assertThat(row.get("folder").asText()).isEqualTo("Ikea");
+    }
+
+    @Test
+    void planEntriesCarryTheirFolder() throws Exception {
+        connectGmx();
+
+        var entry = json.readTree(post("/api/classify", "{\"limit\":5}").body()).get("entries").get(0);
+
+        assertThat(entry.has("folder")).isTrue();
+        assertThat(entry.get("folder").isNull()).isTrue(); // the fake plan names no folder
+    }
 }

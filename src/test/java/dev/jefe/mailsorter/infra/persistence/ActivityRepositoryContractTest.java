@@ -48,6 +48,17 @@ public abstract class ActivityRepositoryContractTest {
     }
 
     @Test
+    void roundTripsTheUserFolderAnEmailWasFiledInto() {
+        var e = new ActivityEntry(T0, "gmail|me@gmail.com", "1", "news@ikea.com", "Your new sofa",
+                Category.OTHER, 1.0, "Matched rule", Action.MOVE_TO_FOLDER, ClassificationSource.RULE, false,
+                "Shops/Ikea");
+
+        repo.record(e);
+
+        assertThat(repo.recent(10)).containsExactly(e);
+    }
+
+    @Test
     void recentReturnsNewestFirstAndRespectsTheLimit() {
         repo.record(entry("old", 0, ClassificationSource.MODEL, false));
         repo.record(entry("mid", 10, ClassificationSource.MODEL, false));

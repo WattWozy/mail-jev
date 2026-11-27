@@ -18,19 +18,20 @@ import java.util.Objects;
 public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
 
     private static final String SELECT_ALL = """
-            SELECT id, match_field, pattern, action, category
+            SELECT id, match_field, pattern, action, category, folder
             FROM prefilter_rules
             ORDER BY created_at ASC, rowid ASC
             """;
 
     private static final String UPSERT = """
-            INSERT INTO prefilter_rules(id, match_field, pattern, action, category, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO prefilter_rules(id, match_field, pattern, action, category, folder, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 match_field = excluded.match_field,
                 pattern     = excluded.pattern,
                 action      = excluded.action,
-                category    = excluded.category
+                category    = excluded.category,
+                folder      = excluded.folder
             """;
 
     private static final String DELETE_BY_ID = """
@@ -70,7 +71,8 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
             ps.setString(3, rule.pattern());
             ps.setString(4, rule.action().name());
             ps.setString(5, rule.category().name());
-            ps.setString(6, Instant.now().truncatedTo(ChronoUnit.MILLIS).toString());
+            ps.setString(6, rule.folder());
+            ps.setString(7, Instant.now().truncatedTo(ChronoUnit.MILLIS).toString());
             ps.executeUpdate();
         } catch (SQLException e) {
             var ex = new PersistenceException("Could not save prefilter rule", e);
@@ -100,7 +102,8 @@ public record SqliteRuleStore(SqliteDatabase db) implements RuleRepository {
                 RuleField.valueOf(rs.getString("match_field")),
                 rs.getString("pattern"),
                 Action.valueOf(rs.getString("action")),
-                Category.valueOf(rs.getString("category"))
+                Category.valueOf(rs.getString("category")),
+                rs.getString("folder")
         );
     }
 }

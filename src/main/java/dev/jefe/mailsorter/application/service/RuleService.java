@@ -6,7 +6,9 @@ import dev.jefe.mailsorter.application.port.in.DeleteRuleUseCase;
 import dev.jefe.mailsorter.application.port.in.ListRulesUseCase;
 import dev.jefe.mailsorter.application.port.out.RuleRepository;
 import dev.jefe.mailsorter.application.service.prefilter.rules.PrefilterRule;
+import dev.jefe.mailsorter.domain.model.Action;
 import dev.jefe.mailsorter.domain.model.Category;
+import dev.jefe.mailsorter.domain.model.FolderNames;
 
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +42,11 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
         if (command.field() == null) {
             throw new IllegalArgumentException("field is required");
         }
-        if (command.action() == null) {
+        String folder = FolderNames.validate(command.folder());
+        if (folder == null && command.action() == Action.MOVE_TO_FOLDER) {
+            throw new IllegalArgumentException("folder is required to move mail to a folder");
+        }
+        if (folder == null && command.action() == null) {
             throw new IllegalArgumentException("action is required");
         }
         String normalizedPattern = normalize(command.pattern());
@@ -53,8 +59,9 @@ public final class RuleService implements ListRulesUseCase, AddRuleUseCase, Dele
                 UUID.randomUUID().toString(),
                 command.field(),
                 normalizedPattern,
-                command.action(),
-                category
+                folder != null ? Action.MOVE_TO_FOLDER : command.action(),
+                category,
+                folder
         );
 
         repository.save(rule);

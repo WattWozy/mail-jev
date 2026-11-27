@@ -49,4 +49,8 @@ public final class ClassificationCache {
     public synchronized void remove(Key key) {
         map.remove(key);
     }
+
+    public synchronized void clear() {
+        map.clear();
+    }
 }

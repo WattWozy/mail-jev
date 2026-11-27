@@ -20,13 +20,13 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
 
     private static final String INSERT = """
             INSERT INTO activity(at, account_id, email_id, sender, subject, category, confidence,
-                                 reason, action, source, overridden)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 reason, action, source, overridden, folder)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private static final String RECENT = """
             SELECT at, account_id, email_id, sender, subject, category, confidence,
-                   reason, action, source, overridden
+                   reason, action, source, overridden, folder
             FROM activity
             ORDER BY at DESC, id DESC
             LIMIT ?
@@ -58,6 +58,7 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
             ps.setString(9, e.action().name());
             ps.setString(10, e.source().name());
             ps.setInt(11, e.overridden() ? 1 : 0);
+            ps.setString(12, e.folder());
             ps.executeUpdate();
         } catch (SQLException ex) {
             throw failure("Could not record activity", ex);
@@ -101,7 +102,8 @@ public record SqliteActivityRepository(SqliteDatabase db) implements ActivityRep
                 rs.getString("reason"),
                 Action.valueOf(rs.getString("action")),
                 ClassificationSource.valueOf(rs.getString("source")),
-                rs.getInt("overridden") == 1);
+                rs.getInt("overridden") == 1,
+                rs.getString("folder"));
     }
 
     private static PersistenceException failure(String message, SQLException cause) {

@@ -22,6 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.*;
 
 /**
@@ -51,6 +52,8 @@ public final class ImapMailProvider implements MailProvider {
     private final String trashFolder;
     private final String host;
     private final String username;
+    /** User folders filed into during this session; searched too so read/restore still find moved mail. */
+    private final Set<String> userFolders = ConcurrentHashMap.newKeySet();
 
     ImapMailProvider(Store store, String host, String username) {
         this(store, "Archive", "Trash", host, username);
@@ -76,7 +79,7 @@ public final class ImapMailProvider implements MailProvider {
     @Override
     public EmailContent read(String emailId) {
         try {
-            for (String folderName : List.of(INBOX, archiveFolder, trashFolder)) {
+            for (String folderName : searchOrder()) {
                 Folder folder = store.getFolder(folderName);
 
                 if (!folder.exists()) continue;
@@ -198,22 +201,27 @@ public final class ImapMailProvider implements MailProvider {
             try {
                 Map<String, Message> byId = resolve(inbox, ops);
 
-                Map<Action, List<Message>> byAction = new EnumMap<>(Action.class);
+                Map<Target, List<Message>> byTarget = new LinkedHashMap<>();
                 Map<Message, String> idOf = new IdentityHashMap<>();
                 for (MailOperation op : ops) {
                     Message m = byId.get(op.emailId());
                     if (m == null) { failed.add(op.emailId()); continue; }
                     idOf.put(m, op.emailId());
-                    byAction.computeIfAbsent(op.action(), k -> new ArrayList<>()).add(m);
+                    byTarget.computeIfAbsent(new Target(op.action(), op.folder()), k -> new ArrayList<>()).add(m);
                 }
 
-                for (Map.Entry<Action, List<Message>> entry : byAction.entrySet()) {
+                for (Map.Entry<Target, List<Message>> entry : byTarget.entrySet()) {
                     Message[] group = entry.getValue().toArray(Message[]::new);
                     try {
                         // Flag first: COPY/MOVE preserves flags, so moved mail keeps the marker.
                         inbox.setFlags(group, new Flags(PROCESSED_FLAG), true);
-                        switch (entry.getKey()) {
+                        Target target = entry.getKey();
+                        switch (target.action()) {
                             case ARCHIVE -> moveAll(inbox, group, archiveFolder);
+                            case MOVE_TO_FOLDER -> {
+                                moveAll(inbox, group, target.folder());
+                                userFolders.add(target.folder());
+                            }
                             case MOVE_TO_TRASH -> moveAll(inbox, group, trashFolder);
                             case FLAG_FOR_REVIEW -> inbox.setFlags(group, new Flags(reviewLabel), true);
                             case KEEP -> { }
@@ -236,6 +244,15 @@ public final class ImapMailProvider implements MailProvider {
         return failed;
     }
 
+    /** One bulk IMAP operation per distinct action and destination folder. */
+    private record Target(Action action, String folder) {}
+
+    private List<String> searchOrder() {
+        List<String> order = new ArrayList<>(List.of(INBOX, archiveFolder, trashFolder));
+        userFolders.stream().filter(f -> !order.contains(f)).sorted().forEach(order::add);
+        return order;
+    }
+
     private static void move(IMAPFolder from, List<Message> msgs, Folder to) throws MessagingException {
         if (msgs == null || msgs.isEmpty()) return;
         from.moveMessages(msgs.toArray(Message[]::new), to); // uses MOVE if the server supports it, else COPY+DELETE
@@ -245,10 +262,10 @@ public final class ImapMailProvider implements MailProvider {
         void apply(Folder folder, Message message) throws MessagingException;
     }
 
-    /** Finds the message by id in INBOX, then Archive, then Trash, and applies the action to it. */
+    /** Finds the message by id in INBOX, Archive, Trash, then the user folders, and applies the action to it. */
     private void onMessage(String emailId, MessageAction action) {
         try {
-            for (String name : List.of(INBOX, archiveFolder, trashFolder)) {
+            for (String name : searchOrder()) {
                 Folder folder = store.getFolder(name);
                 if (!folder.exists()) continue;
                 folder.open(Folder.READ_WRITE);

@@ -32,6 +32,13 @@ public final class Fakes {
             return this;
         }
 
+        /** A rule-like hit that files the email into a user folder. */
+        FakeClassifier answerFolder(String emailId, String folder) {
+            answers.put(emailId, new Classification(Category.OTHER, 1.0, "fake rule",
+                    ClassificationSource.RULE).withFolder(folder));
+            return this;
+        }
+
         FakeClassifier failFor(String emailId) {
             failing.add(emailId);
             return this;

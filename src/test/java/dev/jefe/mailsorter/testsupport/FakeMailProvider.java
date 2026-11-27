@@ -16,6 +16,7 @@ public class FakeMailProvider implements MailProvider {
     public final List<Email> inbox = new ArrayList<>();
     public final List<String> archived = new ArrayList<>();
     public final List<String> trashed = new ArrayList<>();
+    public final Map<String, String> filed = new LinkedHashMap<>();   // emailId -> user folder
     public final List<String> processed = new ArrayList<>();
     public final List<String> restored = new ArrayList<>();
     public final Map<String, List<String>> labels = new HashMap<>();
@@ -117,6 +118,7 @@ public class FakeMailProvider implements MailProvider {
             switch (op.action()) {
                 case ARCHIVE -> archive(id);
                 case MOVE_TO_TRASH -> moveToTrash(id);
+                case MOVE_TO_FOLDER -> filed.put(id, op.folder());
                 case FLAG_FOR_REVIEW -> addLabel(id, reviewLabel);
                 case KEEP -> {
                 }
